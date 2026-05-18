@@ -10,6 +10,7 @@ from django.conf import settings
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 
 urlpatterns = [
+    path("", RedirectView.as_view(url="/api/docs/"), name="root"),
     path("admin/", admin.site.urls),
     path("api/auth/",             include("apps.accounts.urls")),
     path("api/facilities/",       include("apps.facilities.urls")),

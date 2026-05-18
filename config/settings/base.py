@@ -9,7 +9,7 @@ from datetime import timedelta
 import environ
 import os
 
-
+{
 SECRET_KEY = os.getenv("SECRET_KEY")
 
 DEBUG = os.getenv("DEBUG") == "True"
@@ -19,8 +19,10 @@ ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",")
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 env = environ.Env()
-environ.Env.read_env(BASE_DIR / ".env")
 
+environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
+
+}
 
 
 # ── Apps ──────────────────────────────────────────────────────────────────
@@ -54,6 +56,7 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 # ── Middleware ────────────────────────────────────────────────────────────
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",        # must be before CommonMiddleware
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -85,7 +88,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 # ── Database ──────────────────────────────────────────────────────────────
 DATABASES = {
-    "default": env.db("DATABASE_URL")
+    'default': env.db()
 }
 DATABASES["default"]["ATOMIC_REQUESTS"] = True  # wrap every request in a transaction
 

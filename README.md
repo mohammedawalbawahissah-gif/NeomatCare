@@ -78,7 +78,7 @@ NeoMatCare is a backend API that equips frontline health workers — midwives, n
 ### 1. Clone and set up the environment
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/maternal-referral-api.git
+git clone https://github.com/mohammedawalbawahissah/maternal-referral-api.git
 cd maternal-referral-api
 python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
@@ -295,7 +295,7 @@ This project supports **UN Sustainable Development Goal 3** — Good Health and 
 
 ## 👤 Author
 
-Built as a Backend Engineering capstone project.
+Mohammed Awal Bawah Issah
 
 ---
 

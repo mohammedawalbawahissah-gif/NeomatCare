@@ -4,28 +4,32 @@ config/settings/base.py
 Settings shared across all environments.
 Dev and prod override or extend these.
 """
+
 from pathlib import Path
 from datetime import timedelta
 import environ
 import os
 
-{
-SECRET_KEY = os.getenv("SECRET_KEY")
 
-DEBUG = os.getenv("DEBUG") == "True"
-
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",")
-
+# ── Base directory ────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
+
+# ── Environment variables ────────────────────────────────────────────────
 env = environ.Env()
 
-environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
-
-}
+environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
 
 
-# ── Apps ──────────────────────────────────────────────────────────────────
+# ── Core settings ────────────────────────────────────────────────────────
+SECRET_KEY = env("DJANGO_SECRET_KEY")
+
+DEBUG = env.bool("DJANGO_DEBUG", default=False)
+
+ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=[])
+
+
+# ── Apps ─────────────────────────────────────────────────────────────────
 DJANGO_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -53,11 +57,12 @@ LOCAL_APPS = [
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
-# ── Middleware ────────────────────────────────────────────────────────────
+
+# ── Middleware ───────────────────────────────────────────────────────────
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
-    "corsheaders.middleware.CorsMiddleware",        # must be before CommonMiddleware
+    "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -66,8 +71,14 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
+
+# ── URL / WSGI ───────────────────────────────────────────────────────────
 ROOT_URLCONF = "config.urls"
 
+WSGI_APPLICATION = "config.wsgi.application"
+
+
+# ── Templates ────────────────────────────────────────────────────────────
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
@@ -84,37 +95,59 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "config.wsgi.application"
 
-# ── Database ──────────────────────────────────────────────────────────────
+# ── Database ─────────────────────────────────────────────────────────────
 DATABASES = {
-    'default': env.db()
+    "default": env.db("DATABASE_URL")
 }
-DATABASES["default"]["ATOMIC_REQUESTS"] = True  # wrap every request in a transaction
 
-# ── Custom user model ─────────────────────────────────────────────────────
+DATABASES["default"]["ATOMIC_REQUESTS"] = True
+
+
+# ── Custom user model ────────────────────────────────────────────────────
 AUTH_USER_MODEL = "accounts.User"
 
-# ── Password validation ───────────────────────────────────────────────────
+
+# ── Password validation ──────────────────────────────────────────────────
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
-    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
-    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+    },
+    {
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"
+    },
+    {
+        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"
+    },
+    {
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"
+    },
 ]
 
-# ── Internationalisation ──────────────────────────────────────────────────
+
+# ── Internationalisation ─────────────────────────────────────────────────
 LANGUAGE_CODE = "en-us"
+
 TIME_ZONE = "Africa/Accra"
+
 USE_I18N = True
+
 USE_TZ = True
 
-# ── Static files ──────────────────────────────────────────────────────────
+
+# ── Static files ─────────────────────────────────────────────────────────
 STATIC_URL = "/static/"
+
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+
+
+# ── Default primary key field ────────────────────────────────────────────
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# ── Django REST Framework ─────────────────────────────────────────────────
+
+# ── Django REST Framework ────────────────────────────────────────────────
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework_simplejwt.authentication.JWTAuthentication",
@@ -128,38 +161,46 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ],
-    # Default throttle rates — tightened per-view on sensitive endpoints
     "DEFAULT_THROTTLE_RATES": {
         "anon": "20/min",
         "user": "100/min",
-        "auth": "5/min",       # login / register
-        "suggest": "30/min",   # referral suggestion endpoint
+        "auth": "5/min",
+        "suggest": "30/min",
     },
 }
 
-# ── JWT ───────────────────────────────────────────────────────────────────
+
+# ── JWT ──────────────────────────────────────────────────────────────────
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME":  timedelta(minutes=env.int("ACCESS_TOKEN_LIFETIME_MINUTES", default=15)),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=env.int("REFRESH_TOKEN_LIFETIME_DAYS", default=7)),
-    "ROTATE_REFRESH_TOKENS":  True,
+    "ACCESS_TOKEN_LIFETIME": timedelta(
+        minutes=env.int("ACCESS_TOKEN_LIFETIME_MINUTES", default=15)
+    ),
+    "REFRESH_TOKEN_LIFETIME": timedelta(
+        days=env.int("REFRESH_TOKEN_LIFETIME_DAYS", default=7)
+    ),
+    "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
-# ── API documentation (drf-spectacular) ───────────────────────────────────
+
+# ── API Documentation ────────────────────────────────────────────────────
 SPECTACULAR_SETTINGS = {
     "TITLE": "Maternal & Neonatal Emergency Referral API",
     "DESCRIPTION": (
         "AI-assisted emergency referral system for obstetric and neonatal care. "
-        "Supports frontline health workers in routing emergencies to the right facility."
+        "Supports frontline health workers in routing emergencies."
     ),
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
-    "SERVERS": [{"url": "http://localhost:8000"}],  
     "SWAGGER_UI_SETTINGS": {
         "persistAuthorization": True,
     },
 }
 
-# ── CORS ──────────────────────────────────────────────────────────────────
-CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
+
+# ── CORS ─────────────────────────────────────────────────────────────────
+CORS_ALLOWED_ORIGINS = env.list(
+    "CORS_ALLOWED_ORIGINS",
+    default=[]
+)

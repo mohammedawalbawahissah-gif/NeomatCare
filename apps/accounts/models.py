@@ -3,25 +3,27 @@ apps/accounts/models.py
 -----------------------
 Custom User model. Must be set before the first migration via:
     AUTH_USER_MODEL = "accounts.User"
-
 Roles
 -----
 - health_worker   : frontline staff — creates cases and referrals
 - facility_admin  : manages a facility's capacity and incoming referrals
+- specialist      : medical specialist — handles teleconsultations
+- driver          : transport driver — handles transport requests
 - superadmin      : full platform access, analytics, audit logs
 """
 import uuid
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
 from django.utils import timezone
-
 from .managers import UserManager
 
 
 class Role(models.TextChoices):
-    HEALTH_WORKER   = "health_worker",  "Health Worker"
-    FACILITY_ADMIN  = "facility_admin", "Facility Admin"
-    SUPERADMIN      = "superadmin",     "Superadmin"
+    HEALTH_WORKER  = "health_worker",  "Health Worker"
+    FACILITY_ADMIN = "facility_admin", "Facility Admin"
+    SPECIALIST     = "specialist",     "Specialist"
+    DRIVER         = "driver",         "Driver"
+    SUPERADMIN     = "superadmin",     "Superadmin"
 
 
 class User(AbstractBaseUser, PermissionsMixin):
@@ -43,9 +45,9 @@ class User(AbstractBaseUser, PermissionsMixin):
         related_name="staff",
     )
 
-    is_active   = models.BooleanField(default=True)
-    is_staff    = models.BooleanField(default=False)   # Django admin access
-    created_at  = models.DateTimeField(default=timezone.now)
+    is_active  = models.BooleanField(default=True)
+    is_staff   = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
 
     USERNAME_FIELD  = "email"
     REQUIRED_FIELDS = ["name"]
@@ -68,6 +70,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     @property
     def is_facility_admin(self) -> bool:
         return self.role == Role.FACILITY_ADMIN
+
+    @property
+    def is_specialist(self) -> bool:
+        return self.role == Role.SPECIALIST
+
+    @property
+    def is_driver(self) -> bool:
+        return self.role == Role.DRIVER
 
     @property
     def is_superadmin(self) -> bool:

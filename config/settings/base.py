@@ -8,6 +8,7 @@ Dev and prod override or extend these.
 from pathlib import Path
 from datetime import timedelta
 import environ
+import dj_database_url
 import os
 
 
@@ -98,7 +99,11 @@ TEMPLATES = [
 
 # ── Database ─────────────────────────────────────────────────────────────
 DATABASES = {
-    "default": env.db("DATABASE_URL")
+    "default": dj_database_url.config(
+        default=os.environ.get("DATABASE_URL"),
+        conn_max_age=600,
+        ssl_require=False,  
+    )
 }
 
 DATABASES["default"]["ATOMIC_REQUESTS"] = True
@@ -200,7 +205,25 @@ SPECTACULAR_SETTINGS = {
 
 
 # ── CORS ─────────────────────────────────────────────────────────────────
-CORS_ALLOWED_ORIGINS = env.list(
-    "CORS_ALLOWED_ORIGINS",
-    default=[]
-)
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:5174",
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:5174",
+]
+
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+]

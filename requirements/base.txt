@@ -22,3 +22,5 @@ django-ratelimit==4.1.0
 
 # Filtering support for DRF querysets
 django-filter==24.2
+
+dj-database-url==2.2.0

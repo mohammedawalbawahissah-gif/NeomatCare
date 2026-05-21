@@ -14,7 +14,17 @@ from .models import Patient, EmergencyCase, TriageNote, DangerSign, VITAL_SIGNS_
 class PatientSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Patient
-        fields = ["id", "age", "district", "blood_group", "anc_visits", "created_at"]
+        fields = [
+            "id",
+            "patient_name",
+            "hospital_id",
+            "patient_phone_number",
+            "age",
+            "district",
+            "blood_group",
+            "anc_visits",
+            "created_at",
+        ]
         read_only_fields = ["id", "created_at"]
 
 
@@ -40,13 +50,16 @@ class EmergencyCaseCreateSerializer(serializers.Serializer):
     """
 
     # ── Patient fields ────────────────────────────────────────────────────
-    patient_age         = serializers.IntegerField(min_value=10, max_value=60)
-    patient_district    = serializers.CharField(max_length=100, required=False, allow_blank=True)
-    patient_blood_group = serializers.ChoiceField(
+    patient_name         = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    hospital_id          = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    patient_phone_number = serializers.CharField(max_length=20,  required=False, allow_blank=True)
+    patient_age          = serializers.IntegerField(min_value=10, max_value=60)
+    patient_district     = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    patient_blood_group  = serializers.ChoiceField(
         choices=["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "unknown"],
         default="unknown",
     )
-    patient_anc_visits  = serializers.IntegerField(min_value=0, default=0)
+    patient_anc_visits   = serializers.IntegerField(min_value=0, default=0)
 
     # ── Case fields ───────────────────────────────────────────────────────
     gestational_age_weeks = serializers.IntegerField(min_value=0, max_value=45, required=False, allow_null=True)
@@ -102,12 +115,15 @@ class EmergencyCaseCreateSerializer(serializers.Serializer):
 
         request = self.context["request"]
 
-        # ── Create the de-identified Patient ─────────────────────────────
+        # ── Create the Patient ────────────────────────────────────────────
         patient = Patient.objects.create(
-            age         = validated_data["patient_age"],
-            district    = validated_data.get("patient_district", ""),
-            blood_group = validated_data.get("patient_blood_group", "unknown"),
-            anc_visits  = validated_data.get("patient_anc_visits", 0),
+            patient_name         = validated_data.get("patient_name", ""),
+            hospital_id          = validated_data.get("hospital_id", ""),
+            patient_phone_number = validated_data.get("patient_phone_number", ""),
+            age                  = validated_data["patient_age"],
+            district             = validated_data.get("patient_district", ""),
+            blood_group          = validated_data.get("patient_blood_group", "unknown"),
+            anc_visits           = validated_data.get("patient_anc_visits", 0),
         )
 
         # ── Resolve referring facility ────────────────────────────────────
@@ -137,14 +153,18 @@ class EmergencyCaseListSerializer(serializers.ModelSerializer):
     Lightweight serializer for list views.
     Does not include triage notes or full patient detail.
     """
-    created_by_name        = serializers.CharField(source="created_by.name", read_only=True)
+    created_by_name         = serializers.CharField(source="created_by.name", read_only=True)
     referring_facility_name = serializers.CharField(source="referring_facility.name", read_only=True)
-    patient_age            = serializers.IntegerField(source="patient.age", read_only=True)
+    patient_age             = serializers.IntegerField(source="patient.age", read_only=True)
+    patient_name            = serializers.CharField(source="patient.patient_name", read_only=True)
+    hospital_id             = serializers.CharField(source="patient.hospital_id", read_only=True)
 
     class Meta:
         model  = EmergencyCase
         fields = [
             "id",
+            "patient_name",
+            "hospital_id",
             "patient_age",
             "gestational_age_weeks",
             "danger_signs",
@@ -160,9 +180,9 @@ class EmergencyCaseDetailSerializer(serializers.ModelSerializer):
     Full detail serializer — includes patient info and triage notes.
     Returned on GET /api/emergency-cases/{id}/
     """
-    patient        = PatientSerializer(read_only=True)
-    triage_notes   = TriageNoteSerializer(many=True, read_only=True)
-    created_by_name = serializers.CharField(source="created_by.name", read_only=True)
+    patient                 = PatientSerializer(read_only=True)
+    triage_notes            = TriageNoteSerializer(many=True, read_only=True)
+    created_by_name         = serializers.CharField(source="created_by.name", read_only=True)
     referring_facility_name = serializers.CharField(
         source="referring_facility.name", read_only=True
     )

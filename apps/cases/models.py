@@ -47,26 +47,26 @@ class MembranesStatus(models.TextChoices):
 
 
 class BloodGroup(models.TextChoices):
-    A_POS  = "A+",  "A+"
-    A_NEG  = "A-",  "A-"
-    B_POS  = "B+",  "B+"
-    B_NEG  = "B-",  "B-"
-    AB_POS = "AB+", "AB+"
-    AB_NEG = "AB-", "AB-"
-    O_POS  = "O+",  "O+"
-    O_NEG  = "O-",  "O-"
+    A_POS   = "A+",      "A+"
+    A_NEG   = "A-",      "A-"
+    B_POS   = "B+",      "B+"
+    B_NEG   = "B-",      "B-"
+    AB_POS  = "AB+",     "AB+"
+    AB_NEG  = "AB-",     "AB-"
+    O_POS   = "O+",      "O+"
+    O_NEG   = "O-",      "O-"
     UNKNOWN = "unknown", "Unknown"
 
 
 # ── Expected shape of vital_signs JSONField ───────────────────────────────
 # Documented here for frontend/API consumers.
 # {
-#   "systolic_bp":  120,   # mmHg
-#   "diastolic_bp":  80,   # mmHg
-#   "heart_rate":    88,   # bpm
-#   "respiratory_rate": 18, # breaths/min
-#   "temperature":  37.2, # °C
-#   "spo2":         98,   # %
+#   "systolic_bp":      120,   # mmHg
+#   "diastolic_bp":      80,   # mmHg
+#   "heart_rate":        88,   # bpm
+#   "respiratory_rate":  18,   # breaths/min
+#   "temperature":      37.2,  # °C
+#   "spo2":              98,   # %
 # }
 VITAL_SIGNS_SCHEMA = {
     "systolic_bp":      int,
@@ -82,13 +82,35 @@ class Patient(models.Model):
     """
     De-identified patient record.
 
-    No name, no national ID, no phone number — only the minimum clinical
-    and demographic data needed for care and analytics.
+    Stores the minimum clinical and demographic data needed for care and
+    analytics, plus contact/identification fields used at the point of care.
 
     Soft-delete via deleted_at: set this field to now() to remove the
     patient from all active queries. Never hard-delete patient records.
     """
-    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # ── Identification fields ─────────────────────────────────────────────
+    patient_name         = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text="Full name of the patient.",
+    )
+    hospital_id          = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Hospital or facility-issued patient ID / folder number.",
+    )
+    patient_phone_number = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        help_text="Contact phone number for the patient or next of kin.",
+    )
+
+    # ── Demographic / clinical fields ─────────────────────────────────────
     age         = models.PositiveIntegerField()
     district    = models.CharField(max_length=100, blank=True)
     blood_group = models.CharField(
@@ -100,15 +122,17 @@ class Patient(models.Model):
         default=0,
         help_text="Number of antenatal care visits completed before this emergency.",
     )
+
     # Soft delete — never hard-delete patient records
-    deleted_at  = models.DateTimeField(null=True, blank=True)
-    created_at  = models.DateTimeField(default=timezone.now)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"Patient {self.id} — age {self.age}"
+        display = self.patient_name or f"Patient {self.id}"
+        return f"{display} — age {self.age}"
 
     @property
     def is_deleted(self) -> bool:

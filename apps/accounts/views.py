@@ -7,8 +7,9 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.exceptions import TokenError
 from django_ratelimit.decorators import ratelimit
 from django.utils.decorators import method_decorator
-from .serializers import RegisterSerializer, UserSerializer, CustomTokenObtainPairSerializer 
 from django.db.models import Q
+from .models import User
+from .serializers import RegisterSerializer, UserSerializer, CustomTokenObtainPairSerializer
 
 
 @method_decorator(ratelimit(key='ip', rate='5/min', method='POST', block=True), name='post')
@@ -75,3 +76,29 @@ class UserListView(APIView):
 
         serializer = UserSerializer(queryset, many=True)
         return Response(serializer.data)
+
+class PushTokenView(APIView):
+    """
+    POST /api/auth/push-token/
+    Registers or updates the Expo push token for the authenticated user.
+    Called by the mobile app on every login.
+
+    Body: { "token": "ExponentPushToken[xxxx]" }
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        token = request.data.get("token", "").strip()
+        if not token:
+            return Response(
+                {"detail": "token is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not token.startswith("ExponentPushToken"):
+            return Response(
+                {"detail": "Invalid token format. Expected ExponentPushToken[...]."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        request.user.expo_push_token = token
+        request.user.save(update_fields=["expo_push_token"])
+        return Response({"detail": "Push token registered."}, status=status.HTTP_200_OK)

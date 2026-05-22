@@ -56,19 +56,63 @@ class ReferralSuggestView(APIView):
     permission_classes = [IsAuthenticated, IsHealthWorker]
 
     def post(self, request):
+        """
+        Generate ranked referral facility suggestions
+        for an emergency case.
+        """
+
         case_id = request.data.get("emergency_case_id")
+
+        # -------------------------------------------------
+        # VALIDATION
+        # -------------------------------------------------
+
         if not case_id:
             return Response(
-                {"detail": "emergency_case_id is required."},
+                {
+                    "success": False,
+                    "detail": "emergency_case_id is required.",
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # -------------------------------------------------
+        # FETCH EMERGENCY CASE
+        # -------------------------------------------------
+
         try:
-            case = EmergencyCase.objects.select_related("referring_facility").get(id=case_id)
+            case = EmergencyCase.objects.select_related(
+                "referring_facility"
+            ).get(id=case_id)
+
         except EmergencyCase.DoesNotExist:
             return Response(
-                {"detail": "Emergency case not found."},
+                {
+                    "success": False,
+                    "detail": "Emergency case not found.",
+                },
                 status=status.HTTP_404_NOT_FOUND,
             )
+
+        # -------------------------------------------------
+        # VALIDATE REFERRING FACILITY
+        # -------------------------------------------------
+
+        if not case.referring_facility:
+            return Response(
+                {
+                    "success": False,
+                    "detail": (
+                        "No referring facility assigned "
+                        "to this emergency case."
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # -------------------------------------------------
+        # BUILD CASE SNAPSHOT
+        # -------------------------------------------------
 
         case_snap = CaseSnapshot(
             id=str(case.id),
@@ -76,13 +120,101 @@ class ReferralSuggestView(APIView):
             referring_facility_lat=case.referring_facility.latitude,
             referring_facility_lng=case.referring_facility.longitude,
         )
-        facilities = HealthFacility.objects.filter(is_active=True).exclude(
-            id=case.referring_facility_id
+
+        # -------------------------------------------------
+        # FETCH AVAILABLE FACILITIES
+        # -------------------------------------------------
+
+        facilities = (
+            HealthFacility.objects.filter(is_active=True)
+            .exclude(id=case.referring_facility_id)
         )
-        facility_snaps = [_build_facility_snapshot(f) for f in facilities]
+
+        # -------------------------------------------------
+        # BUILD FACILITY SNAPSHOTS
+        # -------------------------------------------------
+
+        facility_snaps = [
+            _build_facility_snapshot(f)
+            for f in facilities
+        ]
+
+        # -------------------------------------------------
+        # RUN REFERRAL ENGINE
+        # -------------------------------------------------
+
         engine = ReferralEngine()
-        result = engine.suggest(case_snap, facility_snaps)
-        return Response(suggestion_to_dict(result), status=status.HTTP_200_OK)
+
+        result = engine.suggest(
+            case_snap,
+            facility_snaps,
+        )
+
+        payload = suggestion_to_dict(result)
+
+        recommended_facility = payload.get(
+            "recommended_facility"
+        )
+
+        alternatives = payload.get(
+            "alternatives",
+            [],
+        )
+
+        # -------------------------------------------------
+        # NO MATCH FOUND
+        # -------------------------------------------------
+
+        if not recommended_facility:
+            return Response(
+                {
+                    "success": False,
+                    "detail": (
+                        "No suitable referral facility found."
+                    ),
+                    "engine_version": payload.get(
+                        "engine_version"
+                    ),
+                    "recommended_facility": None,
+                    "alternatives": [],
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        # -------------------------------------------------
+        # SUCCESS RESPONSE
+        # -------------------------------------------------
+
+        return Response(
+            {
+                "success": True,
+                "detail": (
+                    "Referral recommendations generated "
+                    "successfully."
+                ),
+
+                # ENGINE METADATA
+                "engine_version": payload.get(
+                    "engine_version"
+                ),
+
+                # CASE CONTEXT
+                "emergency_case_id": str(case.id),
+
+                # PRIMARY RECOMMENDATION
+                "recommended_facility":
+                    recommended_facility,
+
+                # FALLBACK OPTIONS
+                "alternatives":
+                    alternatives,
+
+                # ANALYTICS
+                "total_ranked_facilities":
+                    1 + len(alternatives),
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class ReferralCreateView(APIView):

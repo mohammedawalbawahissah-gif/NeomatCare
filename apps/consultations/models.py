@@ -63,6 +63,10 @@ class SpecialistProfile(models.Model):
         related_name="specialist_profile",
         limit_choices_to={"role": "specialist"},
     )
+    specialist_phone = models.CharField(max_length=20, blank=True)
+    specialist_email = models.EmailField(max_length=120, blank=True)
+    whatsapp_number = models.CharField(max_length=20, blank=True)
+    emergency_contact = models.CharField(max_length=20, blank=True)
     specialty        = models.CharField(max_length=30, choices=Specialty.choices)
     qualification    = models.CharField(max_length=255, blank=True, help_text="E.g. MBChB, FWACS")
     years_experience = models.PositiveIntegerField(default=0)

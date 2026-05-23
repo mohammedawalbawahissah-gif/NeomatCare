@@ -1,4 +1,4 @@
-from rest_framework import status
+from rest_framework import status, permissions
 from rest_framework.permissions import AllowAny, IsAuthenticated, BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -10,6 +10,7 @@ from django.utils.decorators import method_decorator
 from django.db.models import Q
 from .models import User
 from .serializers import RegisterSerializer, UserSerializer, CustomTokenObtainPairSerializer
+
 
 
 @method_decorator(ratelimit(key='ip', rate='5/min', method='POST', block=True), name='post')
@@ -102,3 +103,17 @@ class PushTokenView(APIView):
         request.user.expo_push_token = token
         request.user.save(update_fields=["expo_push_token"])
         return Response({"detail": "Push token registered."}, status=status.HTTP_200_OK)
+
+class SpecialistSearchView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        query = request.query_params.get("q", "").strip()
+        if len(query) < 2:
+            return Response([])
+        users = User.objects.filter(
+            role="specialist",
+            is_active=True,
+            name__icontains=query
+        ).values("id", "name", "email")[:10]
+        return Response(list(users))

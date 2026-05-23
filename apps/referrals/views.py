@@ -235,7 +235,7 @@ class ReferralCreateView(APIView):
 
 
 class ReferralListView(APIView):
-    permission_classes = [IsAuthenticated, IsHealthWorker]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         user = request.user
@@ -259,7 +259,7 @@ class ReferralListView(APIView):
 
 
 class ReferralDetailView(APIView):
-    permission_classes = [IsAuthenticated, IsHealthWorker]
+    permission_classes = [IsAuthenticated]
 
     def _get_referral(self, referral_id, user):
         try:
@@ -293,7 +293,7 @@ class ReferralDetailView(APIView):
 
 
 class StatusUpdateView(APIView):
-    permission_classes = [IsAuthenticated, IsHealthWorker]
+    permission_classes = [IsAuthenticated]
 
     def patch(self, request, id):
         try:
@@ -332,7 +332,7 @@ class StatusUpdateView(APIView):
 
 
 class ReferralTimelineView(APIView):
-    permission_classes = [IsAuthenticated, IsHealthWorker]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, id):
         try:

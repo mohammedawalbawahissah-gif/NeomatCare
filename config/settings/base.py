@@ -56,6 +56,7 @@ LOCAL_APPS = [
     "apps.referrals",
     "apps.transport",
     "apps.consultations",
+    "apps.specialists",
 
 ]
 

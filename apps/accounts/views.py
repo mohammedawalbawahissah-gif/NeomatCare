@@ -46,14 +46,12 @@ class MeView(APIView):
     def get(self, request):
         return Response(UserSerializer(request.user).data)
 
-class IsSuperAdmin(BasePermission):
-    """Grants access only to users with the superadmin role."""
+class IsAdminOrSuperAdmin(BasePermission):
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.is_superadmin
-
+        return request.user.is_authenticated and request.user.role in ('admin', 'superadmin')
 
 class UserListView(APIView):
-    permission_classes = [IsAuthenticated, IsSuperAdmin]
+    permission_classes = [IsAuthenticated, IsAdminOrSuperAdmin]
 
     def get(self, request):
         queryset = User.objects.select_related("facility").all()

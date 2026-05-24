@@ -2,10 +2,10 @@
 apps/cases/views.py
 --------------------
 Endpoints:
-  POST /api/emergency-cases/             — create a new case (health_worker+)
-  GET  /api/emergency-cases/             — list cases (scoped by role)
-  GET  /api/emergency-cases/{id}/        — full case detail
-  POST /api/emergency-cases/{id}/triage-note/ — append a clinical note
+  POST /api/cases/             — create a new case (worker+)
+  GET  /api/cases/             — list cases (scoped by role)
+  GET  /api/cases/{id}/        — full case detail
+  POST /api/cases/{id}/triage-note/ — append a clinical note
 """
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -24,12 +24,12 @@ from .serializers import (
 
 class EmergencyCaseListCreateView(APIView):
     """
-    GET  /api/emergency-cases/  — list cases, scoped by the user's role:
-        health_worker  → only cases they created
-        facility_admin → all cases from their facility
-        superadmin     → all cases across all facilities
+    GET  /api/cases/  — list cases, scoped by the user's role:
+        worker  → only cases they created
+        admin   → all cases from their facility
+        superadmin → all cases across all facilities
 
-    POST /api/emergency-cases/  — create a new case
+    POST /api/cases/  — create a new case
         Creates a Patient record and an EmergencyCase in one request.
     """
     permission_classes = [IsAuthenticated, IsHealthWorker]
@@ -37,18 +37,18 @@ class EmergencyCaseListCreateView(APIView):
     def get(self, request):
         user = request.user
 
-        if user.is_superadmin:
+        if user.role == 'superadmin':
             cases = EmergencyCase.objects.select_related(
                 "patient", "created_by", "referring_facility"
             ).all()
 
-        elif user.is_facility_admin:
+        elif user.role == 'admin':
             cases = EmergencyCase.objects.select_related(
                 "patient", "created_by", "referring_facility"
             ).filter(referring_facility=user.facility)
 
         else:
-            # health_worker — own cases only
+            # worker — own cases only
             cases = EmergencyCase.objects.select_related(
                 "patient", "created_by", "referring_facility"
             ).filter(created_by=user)
@@ -72,7 +72,7 @@ class EmergencyCaseListCreateView(APIView):
 
 class EmergencyCaseDetailView(APIView):
     """
-    GET /api/emergency-cases/{id}/
+    GET /api/cases/{id}/
 
     Returns full case detail including patient info and all triage notes.
     Access is scoped the same way as the list view.
@@ -91,10 +91,9 @@ class EmergencyCaseDetailView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Scope check
-        if user.is_superadmin:
+        if user.role == 'superadmin':
             return case, None
-        if user.is_facility_admin and case.referring_facility_id == user.facility_id:
+        if user.role == 'admin' and case.referring_facility_id == user.facility_id:
             return case, None
         if case.created_by_id == user.id:
             return case, None
@@ -113,10 +112,10 @@ class EmergencyCaseDetailView(APIView):
 
 class TriageNoteCreateView(APIView):
     """
-    POST /api/emergency-cases/{id}/triage-note/
+    POST /api/cases/{id}/triage-note/
 
     Appends an incremental clinical note to the case.
-    Any health worker with access to the case can add a note.
+    Any worker with access to the case can add a note.
     Notes are never edited or deleted after creation.
 
     Body: { "note": "Patient BP rising, 160/110. Monitoring closely." }
@@ -132,11 +131,10 @@ class TriageNoteCreateView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Scope check — same rules as detail view
         user = request.user
         can_access = (
-            user.is_superadmin
-            or (user.is_facility_admin and case.referring_facility_id == user.facility_id)
+            user.role == 'superadmin'
+            or (user.role == 'admin' and case.referring_facility_id == user.facility_id)
             or (case.created_by_id == user.id)
         )
         if not can_access:
@@ -152,7 +150,6 @@ class TriageNoteCreateView(APIView):
                 note=serializer.validated_data["note"],
                 created_by=request.user,
             )
-            # Return the full updated case so the frontend has the latest note list
             return Response(
                 EmergencyCaseDetailSerializer(case).data,
                 status=status.HTTP_201_CREATED,

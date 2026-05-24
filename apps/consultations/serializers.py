@@ -4,29 +4,27 @@ from apps.accounts.models import User
 
 
 class SpecialistProfileSerializer(serializers.ModelSerializer):
-    user_name       = serializers.CharField(source="user.name",  read_only=True)
-    user_email      = serializers.CharField(source="user.email", read_only=True)
-    user_id_input   = serializers.UUIDField(write_only=True, required=False)
+    user_name  = serializers.CharField(source="user.name",  read_only=True)
+    user_email = serializers.CharField(source="user.email", read_only=True)
+    name       = serializers.CharField(write_only=True, required=False)
 
     class Meta:
         model  = SpecialistProfile
         fields = [
-            "id", "user", "user_name", "user_email", "user_id_input",
+            "id", "user", "user_name", "user_email", "name",
             "professional_pin", "specialty", "years_experience",
             "qualification", "whatsapp_number", "is_available",
             "facility", "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["id", "user", "created_at", "updated_at"]
 
     def validate(self, attrs):
-        user_id = attrs.pop("user_id_input", None)
-        if user_id:
-            try:
-                attrs["user"] = User.objects.get(id=user_id, role="specialist")
-            except User.DoesNotExist:
-                raise serializers.ValidationError(
-                    {"user_id_input": "Specialist user not found."}
-                )
+        name = attrs.pop("name", None)
+        if name:
+            from apps.accounts.models import User
+            user = User.objects.filter(name__iexact=name).first()
+            if user:
+                attrs["user"] = user
         return attrs
 
 

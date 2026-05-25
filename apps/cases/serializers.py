@@ -20,7 +20,7 @@ class PatientSerializer(serializers.ModelSerializer):
             "hospital_id",
             "patient_phone_number",
             "age",
-            "district",
+            "town",
             "blood_group",
             "anc_visits",
             "created_at",
@@ -54,7 +54,7 @@ class EmergencyCaseCreateSerializer(serializers.Serializer):
     hospital_id          = serializers.CharField(max_length=100, required=False, allow_blank=True)
     patient_phone_number = serializers.CharField(max_length=20,  required=False, allow_blank=True)
     patient_age          = serializers.IntegerField(min_value=10, max_value=60)
-    patient_district     = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    patient_town         = serializers.CharField(max_length=100, required=False, allow_blank=True)
     patient_blood_group  = serializers.ChoiceField(
         choices=["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "unknown"],
         default="unknown",
@@ -121,7 +121,7 @@ class EmergencyCaseCreateSerializer(serializers.Serializer):
             hospital_id          = validated_data.get("hospital_id", ""),
             patient_phone_number = validated_data.get("patient_phone_number", ""),
             age                  = validated_data["patient_age"],
-            district             = validated_data.get("patient_district", ""),
+            town                 = validated_data.get("patient_town", ""),
             blood_group          = validated_data.get("patient_blood_group", "unknown"),
             anc_visits           = validated_data.get("patient_anc_visits", 0),
         )

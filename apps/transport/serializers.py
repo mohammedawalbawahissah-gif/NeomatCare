@@ -1,28 +1,79 @@
 from rest_framework import serializers
-from .models import Vehicle, TransportRequest
+from .models import Vehicle, TransportRequest, Driver
 
 
-class VehicleSerializer(serializers.ModelSerializer):
-    driver_name   = serializers.CharField(source="driver.name",   read_only=True)
-    facility_name = serializers.CharField(source="facility.name", read_only=True)
+# ─────────────────────────────────────────────
+# DRIVER SERIALIZER (for SuperAdmin dropdown/UI)
+# ─────────────────────────────────────────────
+class DriverSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source="user.name", read_only=True)
+    email = serializers.CharField(source="user.email", read_only=True)
 
     class Meta:
-        model  = Vehicle
+        model = Driver
         fields = [
-            "id", "registration", "vehicle_type", "make", "model", "year",
-            "status", "driver", "driver_name", "facility", "facility_name",
-            "notes", "created_at", "updated_at",
+            "id",
+            "user",
+            "name",
+            "email",
+            "license_number",
+            "is_available",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
+
+
+# ─────────────────────────────────────────────
+# VEHICLE SERIALIZER
+# ─────────────────────────────────────────────
+class VehicleSerializer(serializers.ModelSerializer):
+    driver_name = serializers.CharField(source="driver.user.name", read_only=True)
+
+    class Meta:
+        model = Vehicle
+        fields = [
+            "id",
+            "registration",
+            "vehicle_type",
+            "make",
+            "model",
+            "year",
+            "status",
+            "driver",
+            "driver_name",
+            "notes",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
 
+# ─────────────────────────────────────────────
+# TRANSPORT REQUEST SERIALIZER
+# ─────────────────────────────────────────────
 class TransportRequestSerializer(serializers.ModelSerializer):
-    requested_by_name = serializers.CharField(source="requested_by.name", read_only=True)
+    requested_by_name = serializers.CharField(
+        source="requested_by.name",
+        read_only=True
+    )
+
+    vehicle_registration = serializers.CharField(
+        source="vehicle.registration",
+        read_only=True
+    )
 
     class Meta:
-        model  = TransportRequest
+        model = TransportRequest
         fields = [
-            "id", "vehicle", "requested_by", "requested_by_name",
-            "referral", "status", "notes", "created_at", "updated_at",
+            "id",
+            "vehicle",
+            "vehicle_registration",
+            "requested_by",
+            "requested_by_name",
+            "referral",
+            "status",
+            "notes",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = ["id", "requested_by", "created_at", "updated_at"]

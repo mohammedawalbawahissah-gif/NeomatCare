@@ -14,7 +14,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import IsHealthWorker, IsHealthWorkerOrAdmin
+from apps.accounts.permissions import IsHealthWorker, IsHealthWorkerOrFacilityAdmin
 from .models import EmergencyCase, TriageNote
 from .serializers import (
     EmergencyCaseCreateSerializer,
@@ -35,7 +35,7 @@ class EmergencyCaseListCreateView(APIView):
     POST /api/cases/  — create a new case (health workers only)
         Creates a Patient record and an EmergencyCase in one request.
     """
-    permission_classes = [IsAuthenticated, IsHealthWorkerOrAdmin]
+    permission_classes = [IsAuthenticated, IsHealthWorkerOrFacilityAdmin]
 
     def get(self, request):
         user = request.user
@@ -85,7 +85,7 @@ class EmergencyCaseDetailView(APIView):
     GET   /api/cases/{id}/ — full case detail
     PATCH /api/cases/{id}/ — update case fields (health worker who created it, or superadmin)
     """
-    permission_classes = [IsAuthenticated, IsHealthWorkerOrAdmin]
+    permission_classes = [IsAuthenticated, IsHealthWorkerOrFacilityAdmin]
 
     def _get_case(self, case_id, user):
         """Fetch the case and enforce ownership/scope rules."""
@@ -152,7 +152,7 @@ class TriageNoteCreateView(APIView):
 
     Body: { "note": "Patient BP rising, 160/110. Monitoring closely." }
     """
-    permission_classes = [IsAuthenticated, IsHealthWorkerOrAdmin]
+    permission_classes = [IsAuthenticated, IsHealthWorkerOrFacilityAdmin]
 
     def post(self, request, id):
         try:
@@ -201,7 +201,7 @@ class SuggestFacilitiesView(APIView):
     and referring facility location, and returns a ranked list of receiving
     facilities with scores, distances, and capability gap warnings.
     """
-    permission_classes = [IsAuthenticated, IsHealthWorkerOrAdmin]
+    permission_classes = [IsAuthenticated, IsHealthWorkerOrFacilityAdmin]
 
     def get(self, request, id):
         try:

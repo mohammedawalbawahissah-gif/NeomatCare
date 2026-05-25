@@ -45,7 +45,7 @@ class EmergencyCaseListCreateView(APIView):
                 "patient", "created_by", "referring_facility"
             ).all()
 
-        elif user.role == 'admin':
+        elif user.role == 'facility_admin':
             cases = EmergencyCase.objects.select_related(
                 "patient", "created_by", "referring_facility"
             ).filter(referring_facility=user.facility)
@@ -62,7 +62,7 @@ class EmergencyCaseListCreateView(APIView):
 
     def post(self, request):
         # Only health workers can create cases
-        if request.user.role not in ('worker', 'superadmin'):
+        if request.user.role not in ('health_worker', 'superadmin'):
             return Response(
                 {"detail": "Only health workers can create emergency cases."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -101,7 +101,7 @@ class EmergencyCaseDetailView(APIView):
 
         if user.role == 'superadmin':
             return case, None
-        if user.role == 'admin' and case.referring_facility_id == user.facility_id:
+        if user.role == 'facility_admin' and case.referring_facility_id == user.facility_id:
             return case, None
         if case.created_by_id == user.id:
             return case, None
@@ -124,7 +124,7 @@ class EmergencyCaseDetailView(APIView):
 
         # Only the creating worker or a superadmin can edit
         user = request.user
-        if user.role not in ('worker', 'superadmin') and case.created_by_id != user.id:
+        if user.role not in ('health_worker', 'superadmin') and case.created_by_id != user.id:
             return Response(
                 {"detail": "Only the health worker who created this case can edit it."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -166,7 +166,7 @@ class TriageNoteCreateView(APIView):
         user = request.user
         can_access = (
             user.role == 'superadmin'
-            or (user.role == 'admin' and case.referring_facility_id == user.facility_id)
+            or (user.role == 'facility_admin' and case.referring_facility_id == user.facility_id)
             or (case.created_by_id == user.id)
         )
         if not can_access:
@@ -217,7 +217,7 @@ class SuggestFacilitiesView(APIView):
         user = request.user
         can_access = (
             user.role == 'superadmin'
-            or (user.role == 'admin' and case.referring_facility_id == user.facility_id)
+            or (user.role == 'facility_admin' and case.referring_facility_id == user.facility_id)
             or (case.created_by_id == user.id)
         )
         if not can_access:

@@ -35,7 +35,6 @@ from referral_engine import (
     suggestion_to_dict,
 )
 
-
 def _build_facility_snapshot(f: HealthFacility) -> FacilitySnapshot:
     return FacilitySnapshot(
         id=str(f.id),
@@ -155,7 +154,7 @@ class ReferralListView(APIView):
                 "referring_facility", "receiving_facility", "created_by"
             ).all()
 
-        elif user.role == 'admin':
+        elif user.role == 'facility_admin':
             referrals = (
                 Referral.objects.select_related(
                     "referring_facility", "receiving_facility", "created_by"
@@ -189,7 +188,7 @@ class ReferralDetailView(APIView):
 
         if user.role == 'superadmin':
             return referral, None
-        if user.role == 'admin' and user.facility_id in (
+        if user.role == 'facility_admin' and user.facility_id in (
             referral.referring_facility_id, referral.receiving_facility_id
         ):
             return referral, None

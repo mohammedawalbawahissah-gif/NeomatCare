@@ -4,7 +4,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import User
 
 # Roles that must be linked to a facility
-FACILITY_REQUIRED_ROLES = {'health_worker', 'facility_admin', 'driver'}
+FACILITY_REQUIRED_ROLES = {'health_worker', 'facility_admin'}
 
 
 class RegisterSerializer(serializers.ModelSerializer):

@@ -8,18 +8,18 @@ from .models import HealthFacility, FacilityCapacityLog
 @admin.register(HealthFacility)
 class HealthFacilityAdmin(admin.ModelAdmin):
     list_display  = [
-        "name", "level", "district", "region",
+        "name", "level", "town", "district", "region",
         "theatre_available", "blood_bank",
         "icu_beds_available", "nicu_cots_available",
         "on_call_specialist", "is_active",
     ]
     list_filter   = ["level", "is_active", "theatre_available", "blood_bank"]
-    search_fields = ["name", "district", "region"]
+    search_fields = ["name", "town", "district", "region"]
     ordering      = ["name"]
     readonly_fields = ["id", "created_at", "updated_at"]
 
     fieldsets = (
-        ("Identity",  {"fields": ("id", "name", "level", "district", "region", "phone", "is_active")}),
+        ("Identity",  {"fields": ("id", "name", "level", "town" "district", "region", "phone", "is_active")}),
         ("Location",  {"fields": ("latitude", "longitude")}),
         ("Services",  {"fields": ("available_services",)}),
         ("Capacity",  {"fields": (

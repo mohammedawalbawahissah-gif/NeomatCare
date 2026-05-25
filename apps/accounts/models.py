@@ -4,7 +4,7 @@ from django.db import models
 
 
 class UserManager(BaseUserManager):
-    def create_user(self, email, name, password=None, role="worker", **extra_fields):
+    def create_user(self, email, name, password=None, role="health_worker", **extra_fields):
         if not email:
             raise ValueError("Email is required")
         email = self.normalize_email(email)
@@ -22,15 +22,15 @@ class UserManager(BaseUserManager):
 class User(AbstractBaseUser, PermissionsMixin):
     class Role(models.TextChoices):
         SUPERADMIN = "superadmin", "Super Admin"
-        ADMIN      = "admin",      "Admin"
-        WORKER     = "worker",     "Worker"
+        FACILTYADMIN      = "facility_admin",      "Facility Admin"
+        HEALTHWORKER     = "health_worker",     "Health Worker"
         SPECIALIST = "specialist", "Specialist"
         DRIVER     = "driver",     "Driver"
 
     id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name       = models.CharField(max_length=255)
     email      = models.EmailField(unique=True)
-    role       = models.CharField(max_length=20, choices=Role.choices, default=Role.WORKER)
+    role       = models.CharField(max_length=20, choices=Role.choices, default=Role.HEALTHWORKER)
     facility   = models.ForeignKey(
         "facilities.HealthFacility",
         null=True, blank=True,

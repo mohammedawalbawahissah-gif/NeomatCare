@@ -4,16 +4,18 @@ from django.utils import timezone
 
 
 class FacilityLevel(models.IntegerChoices):
-    COMMUNITY = 1, "Community / CHPS"
-    PRIMARY   = 2, "Primary / District"
-    SECONDARY = 3, "Secondary / Regional"
-    TERTIARY  = 4, "Tertiary / Teaching"
-
+    COMMUNITY          = 1, "CHPS Compound"
+    HEALTH_CENTRE      = 2, "Health Centre"
+    DISTRICT_HOSPITAL  = 3, "District Hospital"
+    REGIONAL_HOSPITAL  = 4, "Regional Hospital"
+    TEACHING_HOSPITAL  = 5, "Teaching Hospital"
+    PRIVATE            = 6, "Private Facility"
 
 class HealthFacility(models.Model):
     id       = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name     = models.CharField(max_length=255)
     level    = models.IntegerField(choices=FacilityLevel.choices)
+    town     = models.CharField(max_length=100, blank=True)
     district = models.CharField(max_length=100, blank=True)
     region   = models.CharField(max_length=100, blank=True)
 

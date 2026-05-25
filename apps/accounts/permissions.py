@@ -4,6 +4,32 @@ apps/accounts/permissions.py
 
 from rest_framework.permissions import BasePermission
 
+from rest_framework.permissions import BasePermission
+
+
+class IsHealthWorker(BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated and
+            request.user.role == "health_worker"
+        )
+
+
+class IsFacilityAdmin(BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated and
+            request.user.role == "facility_admin"
+        )
+
+
+class IsHealthWorkerOrFacilityAdmin(BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated and
+            request.user.role in ["health_worker", "facility_admin"]
+        )
+        
 
 class IsHealthWorker(BasePermission):
     """
@@ -13,24 +39,7 @@ class IsHealthWorker(BasePermission):
         return bool(
             request.user
             and request.user.is_authenticated
-            and request.user.role in ("worker", "admin", "superadmin")
-        )
-
-
-class IsHealthWorkerOrAdmin(BasePermission):
-    """
-    Grants access to health workers and admins.
-    """
-    def has_permission(self, request, view):
-        return bool(
-            request.user
-            and request.user.is_authenticated
-            and request.user.role in (
-                "health_worker",
-                "worker",
-                "admin",
-                "superadmin",
-            )
+            and request.user.role in ("health_worker", "facility_admin", "superadmin")
         )
 
 
@@ -42,7 +51,7 @@ class IsFacilityAdmin(BasePermission):
         return bool(
             request.user
             and request.user.is_authenticated
-            and request.user.role in ("admin", "superadmin")
+            and request.user.role in ("facility_admin", "superadmin")
         )
 
 
@@ -69,7 +78,7 @@ class IsFacilityAdminForOwnFacility(BasePermission):
         if user.role == "superadmin":
             return True
 
-        if user.role == "admin":
+        if user.role == "facility_admin":
             return user.facility_id == obj.id
 
         return False

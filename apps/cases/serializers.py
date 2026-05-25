@@ -147,6 +147,44 @@ class EmergencyCaseCreateSerializer(serializers.Serializer):
         )
         return case
 
+class EmergencyCaseUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for updating an existing emergency case.
+
+    Allows partial updates to editable clinical fields only.
+    Patient identity and creator metadata are protected.
+    """
+
+    class Meta:
+        model = EmergencyCase
+        fields = [
+            "gestational_age_weeks",
+            "gravida",
+            "parity",
+            "presenting_complaint",
+            "danger_signs",
+            "vital_signs",
+            "fetal_heart_rate",
+            "membranes_status",
+            "obstetric_history",
+            "referring_facility",
+        ]
+
+    def validate_vital_signs(self, value):
+        """
+        Accept partial vital signs updates.
+        Reject unknown keys.
+        """
+        allowed_keys = set(VITAL_SIGNS_SCHEMA.keys())
+        unknown_keys = set(value.keys()) - allowed_keys
+
+        if unknown_keys:
+            raise serializers.ValidationError(
+                f"Unknown vital sign keys: {unknown_keys}. "
+                f"Allowed: {allowed_keys}"
+            )
+
+        return value
 
 class EmergencyCaseListSerializer(serializers.ModelSerializer):
     """

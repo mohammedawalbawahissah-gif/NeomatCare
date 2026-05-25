@@ -3,6 +3,10 @@ from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import User
 
+# Roles that must be linked to a facility
+FACILITY_REQUIRED_ROLES = {'health_worker', 'facility_admin', 'driver'}
+
+
 class RegisterSerializer(serializers.ModelSerializer):
     password  = serializers.CharField(write_only=True, validators=[validate_password])
     password2 = serializers.CharField(write_only=True, label='Confirm password')
@@ -16,6 +20,18 @@ class RegisterSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         if attrs['password'] != attrs.pop('password2'):
             raise serializers.ValidationError({'password': 'Passwords do not match.'})
+
+        role = attrs.get('role', 'health_worker')
+        facility = attrs.get('facility')
+
+        if role in FACILITY_REQUIRED_ROLES and not facility:
+            raise serializers.ValidationError({
+                'facility': (
+                    f'A facility is required for the {role.replace("_", " ")} role. '
+                    f'Please select your facility.'
+                )
+            })
+
         return attrs
 
     def create(self, validated_data):
@@ -30,6 +46,7 @@ class RegisterSerializer(serializers.ModelSerializer):
                 pass
         return user
 
+
 class UserSerializer(serializers.ModelSerializer):
     facility_name = serializers.CharField(source='facility.name', read_only=True, allow_null=True)
     facility_id   = serializers.UUIDField(source='facility.id',   read_only=True, allow_null=True)
@@ -38,6 +55,7 @@ class UserSerializer(serializers.ModelSerializer):
         model  = User
         fields = ['id', 'name', 'email', 'role', 'facility_id', 'facility_name', 'is_active', 'created_at']
         read_only_fields = fields
+
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod

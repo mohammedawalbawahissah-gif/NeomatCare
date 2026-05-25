@@ -17,10 +17,18 @@ class SpecialistProfile(models.Model):
     id               = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user             = models.OneToOneField(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
         related_name="specialist_profile",
         limit_choices_to={"role": "specialist"},
     )
+    # Standalone fields used when no system user account is linked yet
+    display_name      = models.CharField(max_length=255, blank=True)
+    specialist_phone  = models.CharField(max_length=20, blank=True)
+    specialist_email  = models.EmailField(blank=True)
+    bio               = models.TextField(blank=True)
+    emergency_contact = models.CharField(max_length=20, blank=True)
+
     professional_pin = models.CharField(max_length=50, unique=True)
     specialty        = models.CharField(max_length=50, choices=Specialty.choices)
     years_experience = models.PositiveIntegerField(default=0)
@@ -35,6 +43,10 @@ class SpecialistProfile(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def resolved_name(self):
+        return self.user.name if self.user else self.display_name
 
     class Meta:
         db_table = "consultations_specialist_profile"

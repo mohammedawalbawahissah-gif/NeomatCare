@@ -7,7 +7,7 @@ from .models import Patient, EmergencyCase, TriageNote
 
 @admin.register(Patient)
 class PatientAdmin(admin.ModelAdmin):
-    list_display    = ["id", "age", "district", "blood_group", "anc_visits", "deleted_at"]
+    list_display    = ["id", "age", "town", "blood_group", "anc_visits", "deleted_at"]
     list_filter     = ["blood_group"]
     readonly_fields = ["id", "created_at"]
     search_fields   = ["district"]

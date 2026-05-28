@@ -3,21 +3,19 @@ from .models import Vehicle, TransportRequest, Driver
 
 
 # ─────────────────────────────────────────────
-# DRIVER SERIALIZER (for SuperAdmin dropdown/UI)
+# DRIVER SERIALIZER
+# Driver model fields: id, name, phone_number, license_number, is_active, created_at
+# NOTE: Driver has NO 'user' FK — name/phone_number/license_number are direct fields.
 # ─────────────────────────────────────────────
 class DriverSerializer(serializers.ModelSerializer):
-    name = serializers.CharField(source="user.name", read_only=True)
-    email = serializers.CharField(source="user.email", read_only=True)
-
     class Meta:
         model = Driver
         fields = [
             "id",
-            "user",
             "name",
-            "email",
+            "phone_number",
             "license_number",
-            "is_available",
+            "is_active",
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]
@@ -25,9 +23,11 @@ class DriverSerializer(serializers.ModelSerializer):
 
 # ─────────────────────────────────────────────
 # VEHICLE SERIALIZER
+# driver_name reads from Driver.name directly (not driver.user.name)
 # ─────────────────────────────────────────────
 class VehicleSerializer(serializers.ModelSerializer):
-    driver_name = serializers.CharField(source="driver.user.name", read_only=True)
+    # FIX: Driver.name is a direct CharField — not accessed via driver.user.name
+    driver_name = serializers.CharField(source="driver.name", read_only=True)
 
     class Meta:
         model = Vehicle

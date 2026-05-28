@@ -9,7 +9,12 @@ from django_ratelimit.decorators import ratelimit
 from django.utils.decorators import method_decorator
 from django.db.models import Q
 from .models import User
-from .serializers import RegisterSerializer, UserSerializer, CustomTokenObtainPairSerializer
+from .serializers import RegisterSerializer, UserSerializer, UserCreateSerializer, CustomTokenObtainPairSerializer
+
+
+class IsFacilityAdminOrSuperAdmin(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role in ('facility_admin', 'superadmin')
 
 
 
@@ -43,12 +48,93 @@ class LogoutView(APIView):
 
 class MeView(APIView):
     permission_classes = [IsAuthenticated]
+
     def get(self, request):
         return Response(UserSerializer(request.user).data)
 
-class IsFacilityAdminOrSuperAdmin(BasePermission):
-    def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role in ('facility_admin', 'superadmin')
+    def patch(self, request):
+        user = request.user
+        allowed = {"name", "email"}
+        data = {k: v for k, v in request.data.items() if k in allowed}
+        for field, value in data.items():
+            setattr(user, field, value)
+        user.save(update_fields=list(data.keys()))
+        return Response(UserSerializer(user).data)
+
+
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        current = request.data.get("current_password", "")
+        new_pw  = request.data.get("new_password", "")
+        new_pw2 = request.data.get("new_password2", "")
+
+        if not user.check_password(current):
+            return Response({"current_password": "Incorrect password."}, status=status.HTTP_400_BAD_REQUEST)
+        if new_pw != new_pw2:
+            return Response({"new_password2": "Passwords do not match."}, status=status.HTTP_400_BAD_REQUEST)
+        if len(new_pw) < 8:
+            return Response({"new_password": "Password must be at least 8 characters."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new_pw)
+        user.save(update_fields=["password"])
+        return Response({"message": "Password changed successfully."})
+
+
+class UserDetailView(APIView):
+    permission_classes = [IsAuthenticated, IsFacilityAdminOrSuperAdmin]
+
+    def get_object(self, pk, request):
+        try:
+            user = User.objects.select_related("facility").get(pk=pk)
+        except User.DoesNotExist:
+            return None, Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.user.role == "facility_admin":
+            if user.facility_id != request.user.facility_id:
+                return None, Response({"detail": "You can only manage users at your facility."}, status=status.HTTP_403_FORBIDDEN)
+
+        return user, None
+
+    def patch(self, request, pk):
+        user, err = self.get_object(pk, request)
+        if err:
+            return err
+
+        allowed = {"name", "email", "role", "is_active", "facility"}
+        if request.user.role == "facility_admin":
+            allowed -= {"facility"}
+            if request.data.get("role") == "superadmin":
+                return Response({"role": "You cannot assign the superadmin role."}, status=status.HTTP_403_FORBIDDEN)
+
+        data = {k: v for k, v in request.data.items() if k in allowed}
+
+        if "facility" in data:
+            from apps.facilities.models import HealthFacility
+            try:
+                user.facility = HealthFacility.objects.get(id=data.pop("facility"))
+            except HealthFacility.DoesNotExist:
+                return Response({"facility": "Facility not found."}, status=status.HTTP_400_BAD_REQUEST)
+
+        for field, value in data.items():
+            setattr(user, field, value)
+        user.save()
+        return Response(UserSerializer(user).data)
+
+    def delete(self, request, pk):
+        if request.user.role != "superadmin":
+            return Response({"detail": "Only superadmins can delete users."}, status=status.HTTP_403_FORBIDDEN)
+
+        user, err = self.get_object(pk, request)
+        if err:
+            return err
+        if user.pk == request.user.pk:
+            return Response({"detail": "You cannot delete your own account."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 class UserListView(APIView):
     permission_classes = [IsAuthenticated, IsFacilityAdminOrSuperAdmin]
@@ -56,15 +142,18 @@ class UserListView(APIView):
     def get(self, request):
         queryset = User.objects.select_related("facility").all()
 
-        # Optional filters — all combinable
+        # Facility admins only see users at their own facility
+        if request.user.role == "facility_admin":
+            queryset = queryset.filter(facility=request.user.facility)
+
         role     = request.query_params.get("role")
-        facility = request.query_params.get("facility")  # UUID
-        search   = request.query_params.get("search")    # name or email
-        active   = request.query_params.get("is_active") # "true" / "false"
+        facility = request.query_params.get("facility")
+        search   = request.query_params.get("search")
+        active   = request.query_params.get("is_active")
 
         if role:
             queryset = queryset.filter(role=role)
-        if facility:
+        if facility and request.user.role == "superadmin":
             queryset = queryset.filter(facility__id=facility)
         if search:
             queryset = queryset.filter(
@@ -73,8 +162,22 @@ class UserListView(APIView):
         if active is not None:
             queryset = queryset.filter(is_active=active.lower() == "true")
 
-        serializer = UserSerializer(queryset, many=True)
-        return Response(serializer.data)
+        return Response(UserSerializer(queryset, many=True).data)
+
+    def post(self, request):
+        serializer = UserCreateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # Facility admins can only create users at their own facility
+        if request.user.role == "facility_admin":
+            role = serializer.validated_data.get("role", "health_worker")
+            if role == "superadmin":
+                return Response({"role": "You cannot assign the superadmin role."}, status=status.HTTP_403_FORBIDDEN)
+            serializer.validated_data["facility"] = request.user.facility_id
+
+        user = serializer.save()
+        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
 class PushTokenView(APIView):
     """

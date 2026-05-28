@@ -10,7 +10,7 @@ Endpoints:
 """
 import math
 from rest_framework import status, generics
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -61,7 +61,7 @@ class FacilityListCreateView(generics.ListCreateAPIView):
     ── POST ───────────────────────────────────────────────────────────────
     Requires facility_admin or superadmin role.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]  # overridden per method in get_permissions()
 
     def get_serializer_class(self):
         if self.request.method == "POST":
@@ -71,7 +71,7 @@ class FacilityListCreateView(generics.ListCreateAPIView):
     def get_permissions(self):
         if self.request.method == "POST":
             return [IsAuthenticated(), IsFacilityAdmin()]
-        return [IsAuthenticated()]
+        return [AllowAny()]
 
     def get_queryset(self):
         params = self.request.query_params

@@ -133,8 +133,41 @@ class UserDetailView(APIView):
         if user.pk == request.user.pk:
             return Response({"detail": "You cannot delete your own account."}, status=status.HTTP_400_BAD_REQUEST)
 
-        user.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        # ?hard=true attempts a real DB delete — will fail with 409 if the user
+        # has PROTECT-constrained clinical records (referrals, cases, etc.)
+        hard_delete = request.query_params.get("hard", "").lower() == "true"
+
+        if hard_delete:
+            from django.db import ProtectedError
+            try:
+                user.delete()
+                return Response(status=status.HTTP_204_NO_CONTENT)
+            except ProtectedError as e:
+                related = list({obj.__class__.__name__ for obj in list(e.protected_objects)[:10]})
+                return Response(
+                    {
+                        "detail": (
+                            "Cannot delete this user — they have protected clinical records "
+                            f"({', '.join(related)}). Deactivate them instead, "
+                            "or reassign their records first."
+                        )
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+        # Default: soft-delete — deactivate + anonymise so the user cannot log
+        # in but all clinical records remain intact for audit purposes.
+        import uuid as _uuid
+        user.is_active = False
+        user.expo_push_token = ""
+        # Scramble email so it can't be used to log in but stays unique in the DB
+        user.email = f"deleted_{_uuid.uuid4().hex[:8]}@removed.invalid"
+        user.save(update_fields=["is_active", "expo_push_token", "email"])
+        return Response(
+            {"detail": "User deactivated. Their clinical records have been preserved."},
+            status=status.HTTP_200_OK,
+        )
+
 
 class UserListView(APIView):
     permission_classes = [IsAuthenticated, IsFacilityAdminOrSuperAdmin]
@@ -180,13 +213,6 @@ class UserListView(APIView):
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
 class PushTokenView(APIView):
-    """
-    POST /api/auth/push-token/
-    Registers or updates the Expo push token for the authenticated user.
-    Called by the mobile app on every login.
-
-    Body: { "token": "ExponentPushToken[xxxx]" }
-    """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):

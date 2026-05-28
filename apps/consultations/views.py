@@ -1,6 +1,7 @@
 from rest_framework import viewsets, permissions, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.exceptions import PermissionDenied
 from django_filters.rest_framework import DjangoFilterBackend
 from .models import SpecialistProfile, Consultation, ConsultationMessage
 from .serializers import SpecialistProfileSerializer, ConsultationSerializer, ConsultationMessageSerializer
@@ -15,15 +16,42 @@ class SpecialistProfileViewSet(viewsets.ModelViewSet):
     search_fields    = ["user__name", "user__email", "professional_pin"]
     ordering         = ["-created_at"]
 
+    def get_queryset(self):
+        user = self.request.user
+        qs = super().get_queryset()
+        # Facility admin scoped to their facility's specialists
+        if user.role == 'facility_admin':
+            return qs.filter(facility=user.facility)
+        return qs
+
+    def check_write_permission(self, request):
+        if request.user.role not in ('superadmin', 'facility_admin'):
+            raise PermissionDenied("Only admins can manage specialist profiles.")
+
+    def create(self, request, *args, **kwargs):
+        self.check_write_permission(request)
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        self.check_write_permission(request)
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        self.check_write_permission(request)
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if request.user.role != 'superadmin':
+            raise PermissionDenied("Only superadmins can delete specialist profiles.")
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=False, methods=["get"], url_path="available")
     def available(self, request):
         qs = self.get_queryset().filter(is_available=True)
-        serializer = self.get_serializer(qs, many=True)
-        return Response(serializer.data)
+        return Response(self.get_serializer(qs, many=True).data)
 
     @action(detail=True, methods=["get"], url_path="schedules")
     def schedules(self, request, pk=None):
-        # Placeholder — extend when schedules model is added
         return Response([])
 
 
@@ -35,14 +63,29 @@ class ConsultationViewSet(viewsets.ModelViewSet):
     filterset_fields = ["status", "specialist"]
     ordering = ["-created_at"]
 
+    def get_queryset(self):
+        user = self.request.user
+        qs = super().get_queryset()
+        if user.role == 'superadmin':
+            return qs
+        if user.role == 'facility_admin':
+            # Consultations linked to referrals from their facility
+            return qs.filter(referral__referring_facility=user.facility)
+        # Health workers and specialists see only their own
+        return qs.filter(requested_by=user)
+
     def perform_create(self, serializer):
         serializer.save(requested_by=self.request.user)
+
+    def destroy(self, request, *args, **kwargs):
+        if request.user.role != 'superadmin':
+            raise PermissionDenied("Only superadmins can delete consultations.")
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=False, methods=["get"], url_path="queue")
     def queue(self, request):
         qs = self.get_queryset().filter(status="pending")
-        serializer = self.get_serializer(qs, many=True)
-        return Response(serializer.data)
+        return Response(self.get_serializer(qs, many=True).data)
 
     @action(detail=True, methods=["patch"], url_path="status")
     def update_status(self, request, pk=None):

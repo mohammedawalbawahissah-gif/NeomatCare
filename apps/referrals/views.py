@@ -1,13 +1,5 @@
 """
 apps/referrals/views.py
-------------------------
-POST /api/referrals/suggest/          — run engine, return top 3 ranked facilities
-POST /api/referrals/create/           — create a referral
-GET  /api/referrals/                  — list referrals (role-scoped)
-GET  /api/referrals/{id}/             — full referral detail
-PATCH /api/referrals/{id}/status/     — transition to next state
-GET  /api/referrals/{id}/timeline/    — full timestamped state history
-PATCH /api/referrals/{id}/outcome/    — record maternal and neonatal outcome
 """
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -35,7 +27,8 @@ from referral_engine import (
     suggestion_to_dict,
 )
 
-def _build_facility_snapshot(f: HealthFacility) -> FacilitySnapshot:
+
+def _build_facility_snapshot(f):
     return FacilitySnapshot(
         id=str(f.id),
         name=f.name,
@@ -51,12 +44,28 @@ def _build_facility_snapshot(f: HealthFacility) -> FacilitySnapshot:
     )
 
 
+def _can_access_referral(user, referral):
+    """Shared access check for referral views."""
+    if user.role == 'superadmin':
+        return True
+    if user.role == 'facility_admin' and user.facility_id in (
+        referral.referring_facility_id, referral.receiving_facility_id
+    ):
+        return True
+    if referral.created_by_id == user.id:
+        return True
+    return False
+
+
 class ReferralSuggestView(APIView):
-    permission_classes = [IsAuthenticated, IsHealthWorker]
+    # Allow health_worker, facility_admin, and superadmin
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        case_id = request.data.get("emergency_case_id")
+        if request.user.role not in ('health_worker', 'facility_admin', 'superadmin'):
+            return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
 
+        case_id = request.data.get("emergency_case_id")
         if not case_id:
             return Response(
                 {"success": False, "detail": "emergency_case_id is required."},
@@ -64,14 +73,9 @@ class ReferralSuggestView(APIView):
             )
 
         try:
-            case = EmergencyCase.objects.select_related(
-                "referring_facility"
-            ).get(id=case_id)
+            case = EmergencyCase.objects.select_related("referring_facility").get(id=case_id)
         except EmergencyCase.DoesNotExist:
-            return Response(
-                {"success": False, "detail": "Emergency case not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            return Response({"success": False, "detail": "Emergency case not found."}, status=status.HTTP_404_NOT_FOUND)
 
         if not case.referring_facility:
             return Response(
@@ -79,67 +83,56 @@ class ReferralSuggestView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Facility admin can only suggest for cases at their facility
+        user = request.user
+        if user.role == 'facility_admin' and case.referring_facility_id != user.facility_id:
+            return Response({"detail": "You can only suggest referrals for cases at your facility."}, status=status.HTTP_403_FORBIDDEN)
+
         case_snap = CaseSnapshot(
             id=str(case.id),
             danger_signs=case.danger_signs or [],
             referring_facility_lat=case.referring_facility.latitude,
             referring_facility_lng=case.referring_facility.longitude,
         )
-
-        facilities = (
-            HealthFacility.objects.filter(is_active=True)
-            .exclude(id=case.referring_facility_id)
-        )
-
+        facilities = HealthFacility.objects.filter(is_active=True).exclude(id=case.referring_facility_id)
         facility_snaps = [_build_facility_snapshot(f) for f in facilities]
 
         engine = ReferralEngine()
         result = engine.suggest(case_snap, facility_snaps)
         payload = suggestion_to_dict(result)
-
         recommended_facility = payload.get("recommended_facility")
-        alternatives = payload.get("alternatives", [])
 
         if not recommended_facility:
-            return Response(
-                {
-                    "success": False,
-                    "detail": "No suitable referral facility found.",
-                    "engine_version": payload.get("engine_version"),
-                    "recommended_facility": None,
-                    "alternatives": [],
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        return Response(
-            {
-                "success": True,
-                "detail": "Referral recommendations generated successfully.",
+            return Response({
+                "success": False,
+                "detail": "No suitable referral facility found.",
                 "engine_version": payload.get("engine_version"),
-                "emergency_case_id": str(case.id),
-                "recommended_facility": recommended_facility,
-                "alternatives": alternatives,
-                "total_ranked_facilities": 1 + len(alternatives),
-            },
-            status=status.HTTP_200_OK,
-        )
+                "recommended_facility": None,
+                "alternatives": [],
+            })
+
+        return Response({
+            "success": True,
+            "detail": "Referral recommendations generated successfully.",
+            "engine_version": payload.get("engine_version"),
+            "emergency_case_id": str(case.id),
+            "recommended_facility": recommended_facility,
+            "alternatives": payload.get("alternatives", []),
+            "total_ranked_facilities": 1 + len(payload.get("alternatives", [])),
+        })
 
 
 class ReferralCreateView(APIView):
-    permission_classes = [IsAuthenticated, IsHealthWorker]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        serializer = ReferralCreateSerializer(
-            data=request.data,
-            context={"request": request},
-        )
+        if request.user.role not in ('health_worker', 'facility_admin', 'superadmin'):
+            return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = ReferralCreateSerializer(data=request.data, context={"request": request})
         if serializer.is_valid():
             referral = serializer.save()
-            return Response(
-                ReferralDetailSerializer(referral).data,
-                status=status.HTTP_201_CREATED,
-            )
+            return Response(ReferralDetailSerializer(referral).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -148,12 +141,10 @@ class ReferralListView(APIView):
 
     def get(self, request):
         user = request.user
-
         if user.role == 'superadmin':
             referrals = Referral.objects.select_related(
                 "referring_facility", "receiving_facility", "created_by"
             ).all()
-
         elif user.role == 'facility_admin':
             referrals = (
                 Referral.objects.select_related(
@@ -161,14 +152,12 @@ class ReferralListView(APIView):
                 ).filter(referring_facility=user.facility)
                 | Referral.objects.filter(receiving_facility=user.facility)
             )
-
         else:
             referrals = Referral.objects.select_related(
                 "referring_facility", "receiving_facility", "created_by"
             ).filter(created_by=user)
 
-        serializer = ReferralListSerializer(referrals.order_by("-created_at"), many=True)
-        return Response(serializer.data)
+        return Response(ReferralListSerializer(referrals.order_by("-created_at"), many=True).data)
 
 
 class ReferralDetailView(APIView):
@@ -181,30 +170,29 @@ class ReferralDetailView(APIView):
                 "engine_recommendation", "created_by",
             ).prefetch_related("status_logs__changed_by").get(id=referral_id)
         except Referral.DoesNotExist:
+            return None, Response({"detail": "Referral not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not _can_access_referral(user, referral):
             return None, Response(
-                {"detail": "Referral not found."},
-                status=status.HTTP_404_NOT_FOUND,
+                {"detail": "You do not have permission to view this referral."},
+                status=status.HTTP_403_FORBIDDEN,
             )
-
-        if user.role == 'superadmin':
-            return referral, None
-        if user.role == 'facility_admin' and user.facility_id in (
-            referral.referring_facility_id, referral.receiving_facility_id
-        ):
-            return referral, None
-        if referral.created_by_id == user.id:
-            return referral, None
-
-        return None, Response(
-            {"detail": "You do not have permission to view this referral."},
-            status=status.HTTP_403_FORBIDDEN,
-        )
+        return referral, None
 
     def get(self, request, id):
         referral, error = self._get_referral(id, request.user)
         if error:
             return error
         return Response(ReferralDetailSerializer(referral).data)
+
+    def delete(self, request, id):
+        if request.user.role != 'superadmin':
+            return Response({"detail": "Only superadmins can delete referrals."}, status=status.HTTP_403_FORBIDDEN)
+        referral, error = self._get_referral(id, request.user)
+        if error:
+            return error
+        referral.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class StatusUpdateView(APIView):
@@ -214,10 +202,10 @@ class StatusUpdateView(APIView):
         try:
             referral = Referral.objects.get(id=id)
         except Referral.DoesNotExist:
-            return Response(
-                {"detail": "Referral not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            return Response({"detail": "Referral not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not _can_access_referral(request.user, referral):
+            return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
 
         if referral.is_terminal:
             return Response(
@@ -225,10 +213,7 @@ class StatusUpdateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        serializer = StatusUpdateSerializer(
-            data=request.data,
-            context={"referral": referral},
-        )
+        serializer = StatusUpdateSerializer(data=request.data, context={"referral": referral})
         if serializer.is_valid():
             old_status = referral.status
             new_status = serializer.validated_data["status"]
@@ -241,10 +226,7 @@ class StatusUpdateView(APIView):
                 changed_by=request.user,
                 note=serializer.validated_data.get("note", ""),
             )
-            return Response(
-                ReferralDetailSerializer(referral).data,
-                status=status.HTTP_200_OK,
-            )
+            return Response(ReferralDetailSerializer(referral).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -255,42 +237,29 @@ class ReferralTimelineView(APIView):
         try:
             referral = Referral.objects.get(id=id)
         except Referral.DoesNotExist:
-            return Response(
-                {"detail": "Referral not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            return Response({"detail": "Referral not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        logs = ReferralStatusLog.objects.filter(
-            referral=referral
-        ).select_related("changed_by").order_by("timestamp")
+        logs = ReferralStatusLog.objects.filter(referral=referral).select_related("changed_by").order_by("timestamp")
         return Response(ReferralStatusLogSerializer(logs, many=True).data)
 
 
 class OutcomeView(APIView):
-    permission_classes = [IsAuthenticated, IsHealthWorker]
+    permission_classes = [IsAuthenticated]
 
     def patch(self, request, id):
         try:
             referral = Referral.objects.get(id=id)
         except Referral.DoesNotExist:
-            return Response(
-                {"detail": "Referral not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            return Response({"detail": "Referral not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        serializer = OutcomeSerializer(
-            data=request.data,
-            context={"referral": referral},
-        )
+        if not _can_access_referral(request.user, referral):
+            return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = OutcomeSerializer(data=request.data, context={"referral": referral})
         if serializer.is_valid():
             referral.maternal_outcome = serializer.validated_data["maternal_outcome"]
             referral.neonatal_outcome = serializer.validated_data["neonatal_outcome"]
-            referral.outcome_notes = serializer.validated_data.get("outcome_notes", "")
-            referral.save(update_fields=[
-                "maternal_outcome", "neonatal_outcome", "outcome_notes", "updated_at"
-            ])
-            return Response(
-                ReferralDetailSerializer(referral).data,
-                status=status.HTTP_200_OK,
-            )
+            referral.outcome_notes    = serializer.validated_data.get("outcome_notes", "")
+            referral.save(update_fields=["maternal_outcome", "neonatal_outcome", "outcome_notes", "updated_at"])
+            return Response(ReferralDetailSerializer(referral).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

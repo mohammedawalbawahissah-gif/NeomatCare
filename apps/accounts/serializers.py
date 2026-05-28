@@ -70,3 +70,32 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data = super().validate(attrs)
         data['user'] = UserSerializer(self.user).data
         return data
+
+
+class UserCreateSerializer(serializers.ModelSerializer):
+    """Used by admins (superadmin / facility_admin) to create new users."""
+    password  = serializers.CharField(write_only=True, validators=[validate_password])
+    password2 = serializers.CharField(write_only=True, label='Confirm password')
+    facility  = serializers.UUIDField(required=False, allow_null=True)
+
+    class Meta:
+        model  = User
+        fields = ['name', 'email', 'password', 'password2', 'role', 'facility', 'is_active']
+        extra_kwargs = {'role': {'required': False}, 'is_active': {'required': False}}
+
+    def validate(self, attrs):
+        if attrs['password'] != attrs.pop('password2'):
+            raise serializers.ValidationError({'password': 'Passwords do not match.'})
+        return attrs
+
+    def create(self, validated_data):
+        facility_id = validated_data.pop('facility', None)
+        user = User.objects.create_user(**validated_data)
+        if facility_id:
+            from apps.facilities.models import HealthFacility
+            try:
+                user.facility = HealthFacility.objects.get(id=facility_id)
+                user.save(update_fields=['facility'])
+            except HealthFacility.DoesNotExist:
+                pass
+        return user

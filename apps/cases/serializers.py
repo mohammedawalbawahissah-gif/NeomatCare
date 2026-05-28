@@ -121,7 +121,7 @@ class EmergencyCaseCreateSerializer(serializers.Serializer):
             hospital_id          = validated_data.get("hospital_id", ""),
             patient_phone_number = validated_data.get("patient_phone_number", ""),
             age                  = validated_data["patient_age"],
-            district             = validated_data.get("patient_town", ""),
+            town                 = validated_data.get("patient_town", ""),
             blood_group          = validated_data.get("patient_blood_group", "unknown"),
             anc_visits           = validated_data.get("patient_anc_visits", 0),
         )

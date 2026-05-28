@@ -112,7 +112,7 @@ class Patient(models.Model):
 
     # ── Demographic / clinical fields ─────────────────────────────────────
     age         = models.PositiveIntegerField()
-    district    = models.CharField(max_length=100, blank=True)
+    town        = models.CharField(max_length=100, blank=True)
     blood_group = models.CharField(
         max_length=10,
         choices=BloodGroup.choices,

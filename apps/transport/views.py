@@ -9,7 +9,7 @@ from .serializers import VehicleSerializer, TransportRequestSerializer, DriverSe
 
 
 class VehicleViewSet(viewsets.ModelViewSet):
-    queryset = Vehicle.objects.select_related("driver", "driver__user").all()
+    queryset = Vehicle.objects.select_related("driver").all()
     serializer_class = VehicleSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]

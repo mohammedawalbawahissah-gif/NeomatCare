@@ -89,7 +89,7 @@ def push_referral_pending(referral) -> None:
     → Push to all facility admins at receiving facility.
     → Push to patient's health worker (created_by).
     """
-    from apps.accounts.models import User, Role
+    from apps.accounts.models import User
 
     case    = referral.emergency_case
     patient = case.patient
@@ -99,7 +99,7 @@ def push_referral_pending(referral) -> None:
     # Facility admins
     admins = User.objects.filter(
         facility=referral.receiving_facility,
-        role=Role.FACILITY_ADMIN,
+        role=User.Role.FACILTYADMIN,
         is_active=True,
     )
     for admin in admins:

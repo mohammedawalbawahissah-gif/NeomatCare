@@ -162,7 +162,7 @@ class UserDetailView(APIView):
         user.expo_push_token = ""
         # Scramble email so it can't be used to log in but stays unique in the DB
         user.email = f"deleted_{_uuid.uuid4().hex[:8]}@removed.invalid"
-        user.save(update_fields=["is_active", "expo_push_token", "email"])
+        user.save(update_fields=["is_active", "email"])
         return Response(
             {"detail": "User deactivated. Their clinical records have been preserved."},
             status=status.HTTP_200_OK,

@@ -45,12 +45,33 @@ class VehicleViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(qs, many=True).data)
 
 
-class DriverViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Driver.objects.select_related("user").all()
+class DriverViewSet(viewsets.ModelViewSet):
+    """
+    GET    /api/transport/drivers/        — list all drivers
+    POST   /api/transport/drivers/        — create a driver record
+    GET    /api/transport/drivers/{id}/   — driver detail
+    PATCH  /api/transport/drivers/{id}/   — update driver
+    """
+    queryset = Driver.objects.all()
     serializer_class = DriverSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [filters.SearchFilter]
-    search_fields = ["user__name", "user__email"]
+    search_fields = ["name", "phone_number", "license_number"]
+
+    def create(self, request, *args, **kwargs):
+        if request.user.role not in ('superadmin', 'facility_admin'):
+            raise PermissionDenied("Only admins can create driver records.")
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        if request.user.role not in ('superadmin', 'facility_admin'):
+            raise PermissionDenied("Only admins can update driver records.")
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        if request.user.role not in ('superadmin', 'facility_admin'):
+            raise PermissionDenied("Only admins can update driver records.")
+        return super().partial_update(request, *args, **kwargs)
 
 
 class TransportRequestViewSet(viewsets.ModelViewSet):

@@ -28,25 +28,43 @@ def _on_referral_saved(sender, instance, created, **kwargs) -> None:
     if previous is None or previous == instance.status:
         return
 
-    from sms_service import (
-        notify_referral_pending,
-        notify_referral_accepted,
-        notify_referral_cancelled,
-    )
-    from push_service import (
-        push_referral_pending,
-        push_referral_accepted,
-        push_referral_cancelled,
-    )
+    # Guard against missing notification service modules (not yet integrated)
+    try:
+        from sms_service import (
+            notify_referral_pending,
+            notify_referral_accepted,
+            notify_referral_cancelled,
+        )
+        sms_available = True
+    except ImportError:
+        logger.warning("sms_service module not found — SMS notifications skipped.")
+        sms_available = False
+
+    try:
+        from push_service import (
+            push_referral_pending,
+            push_referral_accepted,
+            push_referral_cancelled,
+        )
+        push_available = True
+    except ImportError:
+        logger.warning("push_service module not found — push notifications skipped.")
+        push_available = False
 
     if instance.status == ReferralStatus.PENDING:
-        notify_referral_pending(instance)
-        push_referral_pending(instance)
+        if sms_available:
+            notify_referral_pending(instance)
+        if push_available:
+            push_referral_pending(instance)
 
     elif instance.status == ReferralStatus.ACCEPTED:
-        notify_referral_accepted(instance)
-        push_referral_accepted(instance)
+        if sms_available:
+            notify_referral_accepted(instance)
+        if push_available:
+            push_referral_accepted(instance)
 
     elif instance.status == ReferralStatus.CANCELLED:
-        notify_referral_cancelled(instance)
-        push_referral_cancelled(instance)
+        if sms_available:
+            notify_referral_cancelled(instance)
+        if push_available:
+            push_referral_cancelled(instance)

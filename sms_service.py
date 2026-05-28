@@ -201,13 +201,13 @@ def notify_referral_pending(referral) -> None:
     → SMS to all active facility admins at the receiving facility.
     → SMS to patient.
     """
-    from apps.accounts.models import User, Role
+    from apps.accounts.models import User
     from apps.referrals.models import Notification
 
     # 1. Receiving facility admins
     admins = User.objects.filter(
         facility=referral.receiving_facility,
-        role=Role.FACILITY_ADMIN,
+        role=User.Role.FACILTYADMIN,
         is_active=True,
     )
     for admin in admins:

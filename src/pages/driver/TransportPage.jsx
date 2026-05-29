@@ -634,14 +634,20 @@ export function MyDispatchesPage() {
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Active</p>
           <div className="card divide-y divide-slate-50">
             {active.map(r => (
-              <div key={r.id} className="flex items-center gap-4 px-5 py-4">
+              <div key={r.id} className="flex items-start gap-4 px-5 py-4">
                 <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center shrink-0 text-xl">🚑</div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-slate-900">
                     {r.vehicle_registration || 'Vehicle TBD'}
                   </p>
-                  <p className="text-xs text-slate-400">
-                    {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
+                  {r.referral && (
+                    <p className="text-xs text-brand-600 font-medium mt-0.5">
+                      📋 Referral: {String(r.referral).slice(0, 8)}…
+                    </p>
+                  )}
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Requested {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
+                    {r.requested_by_name ? ` by ${r.requested_by_name}` : ''}
                   </p>
                   {r.notes && <p className="text-xs text-slate-400 italic mt-0.5">{r.notes}</p>}
                 </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { transportApi } from '@/api/client'
+import { transportApi, usersApi } from '@/api/client'
 import { PageSpinner, StatusBadge, Spinner } from '@/components/ui'
 import { Plus, X, Pencil, Trash2 } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
@@ -60,29 +60,14 @@ function RegisterVehicleModal({ open, onClose, onCreated }) {
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
 
-  const [showNewDriver, setShowNewDriver] = useState(false)
-  const [newDriver, setNewDriver]         = useState({ name: '', phone_number: '', license_number: '' })
-  const [creatingDriver, setCreatingDriver] = useState(false)
+  const [driverUsers, setDriverUsers] = useState([])
 
   useEffect(() => {
     if (!open) return
-    transportApi.drivers.list()
-      .then(({ data }) => setDrivers(Array.isArray(data) ? data : data.results || []))
+    usersApi.list({ role: 'driver' })
+      .then(({ data }) => setDriverUsers(Array.isArray(data) ? data : data.results || []))
       .catch(() => {})
   }, [open])
-
-  const handleCreateDriver = async () => {
-    if (!newDriver.name.trim()) return
-    setCreatingDriver(true)
-    try {
-      const { data } = await transportApi.drivers.create(newDriver)
-      setDrivers(prev => [...prev, data])
-      setForm(f => ({ ...f, driver: data.id }))
-      setShowNewDriver(false)
-      setNewDriver({ name: '', phone_number: '', license_number: '' })
-    } catch {}
-    setCreatingDriver(false)
-  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -158,41 +143,18 @@ function RegisterVehicleModal({ open, onClose, onCreated }) {
                 <input type="number" min={1990} max={2030} value={form.year} onChange={set('year')} placeholder="e.g. 2020" style={inputStyle} />
               </div>
               <div style={{ gridColumn: '1/-1' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <label style={{ ...labelStyle, marginBottom: 0 }}>
-                    Assign Driver <span style={{ fontSize: '0.8rem', fontWeight: 400, color: '#94a3b8' }}>(optional)</span>
-                  </label>
-                  <button type="button" onClick={() => setShowNewDriver(v => !v)}
-                    style={{ fontSize: '0.75rem', color: '#207652', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}>
-                    {showNewDriver ? '✕ Cancel' : '+ New Driver'}
-                  </button>
-                </div>
-                {showNewDriver ? (
-                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <input value={newDriver.name} onChange={e => setNewDriver(d => ({ ...d, name: e.target.value }))}
-                      placeholder="Driver full name *" style={{ ...inputStyle, fontSize: '0.82rem' }} />
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                      <input value={newDriver.phone_number} onChange={e => setNewDriver(d => ({ ...d, phone_number: e.target.value }))}
-                        placeholder="Phone number" style={{ ...inputStyle, fontSize: '0.82rem' }} />
-                      <input value={newDriver.license_number} onChange={e => setNewDriver(d => ({ ...d, license_number: e.target.value }))}
-                        placeholder="License number" style={{ ...inputStyle, fontSize: '0.82rem' }} />
-                    </div>
-                    <button type="button" onClick={handleCreateDriver} disabled={creatingDriver || !newDriver.name.trim()}
-                      style={{ padding: '8px', background: (!newDriver.name.trim() || creatingDriver) ? '#e2e8f0' : '#207652', color: (!newDriver.name.trim() || creatingDriver) ? '#94a3b8' : 'white', border: 'none', borderRadius: '6px', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>
-                      {creatingDriver ? 'Creating…' : 'Create & Assign Driver'}
-                    </button>
-                  </div>
-                ) : (
-                  <select value={form.driver} onChange={set('driver')} style={inputStyle}>
-                    <option value="">— No driver assigned —</option>
-                    {drivers.map(d => (
-                      <option key={d.id} value={d.id}>{d.name}{d.license_number ? ` · ${d.license_number}` : ''}</option>
-                    ))}
-                  </select>
-                )}
-                {!showNewDriver && drivers.length === 0 && (
+                <label style={labelStyle}>
+                  Assign Driver <span style={{ fontSize: '0.8rem', fontWeight: 400, color: '#94a3b8' }}>(optional)</span>
+                </label>
+                <select value={form.driver} onChange={set('driver')} style={inputStyle}>
+                  <option value="">— No driver assigned —</option>
+                  {driverUsers.map(u => (
+                    <option key={u.id} value={u.id}>{u.name}{u.email ? ` · ${u.email}` : ''}</option>
+                  ))}
+                </select>
+                {driverUsers.length === 0 && (
                   <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '4px' }}>
-                    No drivers yet — click "+ New Driver" to add one.
+                    No driver accounts found. Register a user with role: Driver first.
                   </p>
                 )}
               </div>
@@ -228,7 +190,7 @@ function EditVehicleModal({ open, onClose, vehicle, onUpdated }) {
 
   useEffect(() => {
     if (!open) return
-    transportApi.drivers.list()
+    usersApi.list({ role: 'driver' })
       .then(({ data }) => setDrivers(Array.isArray(data) ? data : data.results || []))
       .catch(() => {})
   }, [open])
@@ -305,7 +267,7 @@ function EditVehicleModal({ open, onClose, vehicle, onUpdated }) {
                 <label style={labelStyle}>Assign Driver <span style={{ fontSize: '0.8rem', fontWeight: 400, color: '#94a3b8' }}>(optional)</span></label>
                 <select value={form.driver} onChange={set('driver')} style={inputStyle}>
                   <option value="">— No driver assigned —</option>
-                  {drivers.map(d => <option key={d.id} value={d.id}>{d.name}{d.license_number ? ` · ${d.license_number}` : ''}</option>)}
+                  {drivers.map(d => <option key={d.id} value={d.id}>{d.name}{d.email ? ` · ${d.email}` : ''}</option>)}
                 </select>
               </div>
               <div style={{ gridColumn: '1/-1' }}>

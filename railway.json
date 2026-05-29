@@ -1,6 +1,7 @@
 {
   "build": {
-    "builder": "RAILPACK"
+    "builder": "RAILPACK",
+    "buildCommand": "npm install && ./node_modules/.bin/vite build"
   },
   "deploy": {
     "startCommand": "npx serve dist",

@@ -22,69 +22,17 @@ class VehicleViewSet(viewsets.ModelViewSet):
         if request.user.role not in ('superadmin', 'facility_admin'):
             raise PermissionDenied("Only admins can manage vehicles.")
 
-    def _resolve_driver(self, driver_id):
-        """
-        Accept either a Driver model UUID or a User UUID (role=driver).
-        If it's a Driver UUID, return it as-is.
-        If it's a User UUID, get_or_create a matching Driver record and return its ID.
-        Returns None if driver_id is falsy.
-        """
-        if not driver_id:
-            return None
-
-        # Already a Driver record — use directly
-        if Driver.objects.filter(id=driver_id).exists():
-            return str(driver_id)
-
-        # Try resolving from User with role=driver
-        from django.contrib.auth import get_user_model
-        UserModel = get_user_model()
-        try:
-            user = UserModel.objects.get(id=driver_id, role='driver')
-            driver, _ = Driver.objects.get_or_create(
-                name=user.name,
-                defaults={
-                    'phone_number': getattr(user, 'phone_number', '') or '',
-                    'license_number': '',
-                }
-            )
-            return str(driver.id)
-        except (UserModel.DoesNotExist, Exception):
-            return str(driver_id)  # pass through, let serializer raise the error
-
-    def _resolved_data(self, request):
-        """Return request.data with driver UUID resolved to a Driver record ID."""
-        data = request.data.copy()
-        driver_id = data.get('driver')
-        if driver_id:
-            resolved = self._resolve_driver(driver_id)
-            if resolved:
-                data['driver'] = resolved
-            else:
-                data.pop('driver', None)
-        return data
-
     def create(self, request, *args, **kwargs):
         self.check_write_permission(request)
-        data = self._resolved_data(request)
-        serializer = self.get_serializer(data=data)
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-        return Response(serializer.data, status=201)
+        return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
         self.check_write_permission(request)
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        data = self._resolved_data(request)
-        serializer = self.get_serializer(instance, data=data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        return Response(serializer.data)
+        return super().update(request, *args, **kwargs)
 
     def partial_update(self, request, *args, **kwargs):
-        kwargs['partial'] = True
-        return self.update(request, *args, **kwargs)
+        self.check_write_permission(request)
+        return super().partial_update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
         if request.user.role != 'superadmin':
@@ -142,12 +90,19 @@ class TransportRequestViewSet(viewsets.ModelViewSet):
 
         if user.role == 'superadmin':
             pass  # sees all
-        elif user.role == 'facility_admin':
-            qs = qs.filter(referral__referring_facility=user.facility)
-        elif self.request.query_params.get("mine") == "true" or user.role == 'driver':
-            qs = qs.filter(requested_by=user)
 
-        if self.request.query_params.get("mine") == "true":
+        elif user.role == 'facility_admin':
+            # Requests linked to referrals from their facility
+            qs = qs.filter(referral__referring_facility=user.facility)
+
+        elif user.role == 'driver':
+            # Drivers see requests assigned to their vehicle
+            # Vehicle.driver is a FK to Driver model (not User),
+            # so match by driver name since Driver has no User FK
+            driver_qs = Driver.objects.filter(name=user.name)
+            qs = qs.filter(vehicle__driver__in=driver_qs)
+
+        elif self.request.query_params.get("mine") == "true":
             qs = qs.filter(requested_by=user)
 
         return qs

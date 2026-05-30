@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { authApi, facilitiesApi } from '@/api/client'
-import { Heart, Eye, EyeOff, ArrowRight, CheckCircle, Mail, Lock, User, Shield, Building2 } from 'lucide-react'
+import { Heart, Eye, EyeOff, ArrowRight, CheckCircle, Mail, Lock, User, Shield, Building2, Phone, CreditCard } from 'lucide-react'
 
 const inputStyle = {
   width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0',
@@ -28,6 +28,7 @@ export default function RegisterPage() {
   const [form, setForm] = useState({
     name: '', email: '', password: '', password2: '',
     role: 'health_worker', facility: '',
+    phone_number: '', license_number: '',
   })
   const [facilities,        setFacilities]        = useState([])
   const [facilitiesLoading, setFacilitiesLoading] = useState(true)
@@ -67,6 +68,8 @@ export default function RegisterPage() {
         password2: form.password2,
         role:      form.role,
         ...(needsFacility && { facility: form.facility }),
+        ...(form.role === 'driver' && form.phone_number   && { phone_number:   form.phone_number }),
+        ...(form.role === 'driver' && form.license_number && { license_number: form.license_number }),
       }
       await authApi.register(payload)
       setSuccess(true)
@@ -178,6 +181,34 @@ export default function RegisterPage() {
                   )}
                 </div>
               </div>
+            )}
+
+            {/* Driver-specific fields */}
+            {form.role === 'driver' && (
+              <>
+                <div>
+                  <label style={labelStyle}>Phone Number <span style={{ color: '#e43418' }}>*</span></label>
+                  <div style={{ position: 'relative' }}>
+                    <Phone size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                    <input
+                      required value={form.phone_number} onChange={set('phone_number')}
+                      placeholder="+233..."
+                      style={{ ...inputStyle, paddingLeft: '38px' }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label style={labelStyle}>License Number <span style={{ color: '#94a3b8', fontWeight: 400 }}>(optional)</span></label>
+                  <div style={{ position: 'relative' }}>
+                    <CreditCard size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                    <input
+                      value={form.license_number} onChange={set('license_number')}
+                      placeholder="e.g. GH-1234-2020"
+                      style={{ ...inputStyle, paddingLeft: '38px' }}
+                    />
+                  </div>
+                </div>
+              </>
             )}
 
             {/* Password */}

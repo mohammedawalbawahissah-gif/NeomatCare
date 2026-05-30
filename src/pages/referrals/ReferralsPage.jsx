@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { referralsApi, facilitiesApi, transportApi } from '@/api/client'
 import { PageSpinner, StatusBadge, EmptyState, Alert, Modal, Spinner, FormField } from '@/components/ui'
-import { ArrowRightLeft, ArrowLeft, Clock, CheckCircle, ChevronRight, Sparkles, Search } from 'lucide-react'
+import { ArrowRightLeft, ArrowLeft, Clock, CheckCircle, ChevronRight, Sparkles, Search, Phone } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 
 // ── Referral List ─────────────────────────────────────────────────────────────
@@ -479,10 +479,33 @@ export function CreateReferralModal({ open, onClose, emergencyCaseId, onCreated 
             </div>
 
             {selectedVehicle && (
-              <div>
-                <label className="text-xs font-medium text-slate-600 block mb-1">Notes <span className="text-slate-400 font-normal">(optional)</span></label>
-                <textarea rows={2} value={transportNotes} onChange={e => setTransportNotes(e.target.value)}
-                  className="input-field resize-none" placeholder="Any notes for the driver..." />
+              <div className="space-y-3">
+                {/* Driver contact card */}
+                {selectedVehicle.driver_name && (
+                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                    <div>
+                      <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Assigned Driver</p>
+                      <p style={{ margin: '2px 0 0', fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>👤 {selectedVehicle.driver_name}</p>
+                      {selectedVehicle.driver_phone && (
+                        <p style={{ margin: '1px 0 0', fontSize: '0.78rem', color: '#475569' }}>{selectedVehicle.driver_phone}</p>
+                      )}
+                    </div>
+                    {selectedVehicle.driver_phone && (
+                      <a href={'tel:' + selectedVehicle.driver_phone}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: '#207652', color: 'white', borderRadius: '8px', textDecoration: 'none', fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                        <Phone size={14} /> Call Driver
+                      </a>
+                    )}
+                    {!selectedVehicle.driver_phone && (
+                      <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>No phone on record</span>
+                    )}
+                  </div>
+                )}
+                <div>
+                  <label className="text-xs font-medium text-slate-600 block mb-1">Notes <span className="text-slate-400 font-normal">(optional)</span></label>
+                  <textarea rows={2} value={transportNotes} onChange={e => setTransportNotes(e.target.value)}
+                    className="input-field resize-none" placeholder="Any notes for the driver..." />
+                </div>
               </div>
             )}
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { transportApi, usersApi } from '@/api/client'
 import { PageSpinner, StatusBadge, Spinner } from '@/components/ui'
-import { Plus, X, Pencil, Trash2 } from 'lucide-react'
+import { Plus, X, Pencil, Trash2, Phone } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -532,7 +532,16 @@ export function TransportPage() {
                   </div>
                 </div>
                 {t.driver_name && (
-                  <p className="text-xs text-slate-500">👤 {t.driver_name}</p>
+                  <div className="flex items-center gap-3 mt-0.5">
+                    <p className="text-xs text-slate-500">👤 {t.driver_name}</p>
+                    {t.driver_phone && (
+                      <a href={'tel:' + t.driver_phone}
+                        className="text-xs text-brand-600 font-medium flex items-center gap-1 hover:underline"
+                        onClick={e => e.stopPropagation()}>
+                        <Phone size={10} /> {t.driver_phone}
+                      </a>
+                    )}
+                  </div>
                 )}
                 {t.notes && <p className="text-xs text-slate-400 italic">{t.notes}</p>}
               </div>

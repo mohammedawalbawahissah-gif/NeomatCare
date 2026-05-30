@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { usersApi, facilitiesApi } from '@/api/client'
 import { PageSpinner, EmptyState, Spinner } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
-import { Users, Search, Building2, Mail, Clock, Plus, X, Save, Trash2, Edit2, KeyRound } from 'lucide-react'
+import { Users, Search, Building2, Mail, Clock, Plus, X, Save, Trash2, Edit2, KeyRound, Phone, CreditCard } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import clsx from 'clsx'
 
@@ -35,7 +35,7 @@ const lbl = {
 }
 
 const EMPTY_FORM = {
-  name: '', email: '', role: 'health_worker', facility: '', password: '', password2: '', is_active: true,
+  name: '', email: '', role: 'health_worker', facility: '', password: '', password2: '', is_active: true, phone_number: '', license_number: '',
 }
 
 // ── User Modal (Create / Edit) ────────────────────────────────────────────────
@@ -69,6 +69,8 @@ function UserModal({ user, facilities, onClose, onSaved, currentUser }) {
         role:      form.role,
         is_active: form.is_active,
         ...(needsFacility && form.facility && { facility: form.facility }),
+        ...(form.role === 'driver' && form.phone_number   && { phone_number:   form.phone_number.trim() }),
+        ...(form.role === 'driver' && form.license_number && { license_number: form.license_number.trim() }),
       }
       if (!isEdit) {
         payload.password  = form.password
@@ -157,6 +159,35 @@ function UserModal({ user, facilities, onClose, onSaved, currentUser }) {
                   )}
                 </div>
               )}
+              {/* Driver-specific fields */}
+              {form.role === 'driver' && (
+                <>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={lbl}>Phone Number {!isEdit && <span style={{ color: '#e43418' }}>*</span>}</label>
+                    <div style={{ position: 'relative' }}>
+                      <Phone size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                      <input
+                        required={!isEdit}
+                        value={form.phone_number} onChange={set('phone_number')}
+                        placeholder="+233..."
+                        style={{ ...inp, paddingLeft: '36px' }}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={lbl}>License Number <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optional)</span></label>
+                    <div style={{ position: 'relative' }}>
+                      <CreditCard size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                      <input
+                        value={form.license_number} onChange={set('license_number')}
+                        placeholder="e.g. GH-1234-2020"
+                        style={{ ...inp, paddingLeft: '36px' }}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
               {!isEdit && (
                 <>
                   <div>

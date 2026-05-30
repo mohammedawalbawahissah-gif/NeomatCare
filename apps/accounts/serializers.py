@@ -8,13 +8,15 @@ FACILITY_REQUIRED_ROLES = {'health_worker', 'facility_admin'}
 
 
 class RegisterSerializer(serializers.ModelSerializer):
-    password  = serializers.CharField(write_only=True, validators=[validate_password])
-    password2 = serializers.CharField(write_only=True, label='Confirm password')
-    facility  = serializers.UUIDField(required=False, allow_null=True)
+    password       = serializers.CharField(write_only=True, validators=[validate_password])
+    password2      = serializers.CharField(write_only=True, label='Confirm password')
+    facility       = serializers.UUIDField(required=False, allow_null=True)
+    phone_number   = serializers.CharField(required=False, allow_blank=True, max_length=20)
+    license_number = serializers.CharField(required=False, allow_blank=True, max_length=100)
 
     class Meta:
         model  = User
-        fields = ['name', 'email', 'password', 'password2', 'role', 'facility']
+        fields = ['name', 'email', 'password', 'password2', 'role', 'facility', 'phone_number', 'license_number']
         extra_kwargs = {'role': {'required': False}}
 
     def validate(self, attrs):
@@ -35,8 +37,12 @@ class RegisterSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        facility_id = validated_data.pop('facility', None)
+        facility_id    = validated_data.pop('facility', None)
+        phone_number   = validated_data.pop('phone_number', '')
+        license_number = validated_data.pop('license_number', '')
+
         user = User.objects.create_user(**validated_data)
+
         if facility_id:
             from apps.facilities.models import HealthFacility
             try:
@@ -44,6 +50,19 @@ class RegisterSerializer(serializers.ModelSerializer):
                 user.save(update_fields=['facility'])
             except HealthFacility.DoesNotExist:
                 pass
+
+        # Auto-create Driver record so vehicle assignment works immediately
+        if user.role == 'driver':
+            from apps.transport.models import Driver
+            Driver.objects.get_or_create(
+                name=user.name,
+                defaults={
+                    'phone_number':   phone_number,
+                    'license_number': license_number,
+                    'is_active':      True,
+                }
+            )
+
         return user
 
 
@@ -89,8 +108,12 @@ class UserCreateSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        facility_id = validated_data.pop('facility', None)
+        facility_id    = validated_data.pop('facility', None)
+        phone_number   = validated_data.pop('phone_number', '')
+        license_number = validated_data.pop('license_number', '')
+
         user = User.objects.create_user(**validated_data)
+
         if facility_id:
             from apps.facilities.models import HealthFacility
             try:
@@ -98,4 +121,17 @@ class UserCreateSerializer(serializers.ModelSerializer):
                 user.save(update_fields=['facility'])
             except HealthFacility.DoesNotExist:
                 pass
+
+        # Auto-create Driver record so vehicle assignment works immediately
+        if user.role == 'driver':
+            from apps.transport.models import Driver
+            Driver.objects.get_or_create(
+                name=user.name,
+                defaults={
+                    'phone_number':   phone_number,
+                    'license_number': license_number,
+                    'is_active':      True,
+                }
+            )
+
         return user

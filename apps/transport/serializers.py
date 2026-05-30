@@ -26,8 +26,8 @@ class DriverSerializer(serializers.ModelSerializer):
 # driver_name reads from Driver.name directly (not driver.user.name)
 # ─────────────────────────────────────────────
 class VehicleSerializer(serializers.ModelSerializer):
-    # FIX: Driver.name is a direct CharField — not accessed via driver.user.name
-    driver_name = serializers.CharField(source="driver.name", read_only=True)
+    driver_name  = serializers.CharField(source="driver.name",         read_only=True)
+    driver_phone = serializers.CharField(source="driver.phone_number", read_only=True)
 
     class Meta:
         model = Vehicle
@@ -41,6 +41,7 @@ class VehicleSerializer(serializers.ModelSerializer):
             "status",
             "driver",
             "driver_name",
+            "driver_phone",
             "notes",
             "created_at",
             "updated_at",

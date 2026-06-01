@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { casesApi, referralsApi, transportApi, consultationsApi, facilitiesApi } from '@/api/client'
+import { casesApi, referralsApi, transportApi, consultationsApi, facilitiesApi, usersApi } from '@/api/client'
 import { PageSpinner, Alert, DangerSignList, Modal, Spinner, FormField } from '@/components/ui'
 import { ArrowLeft, Plus, ArrowRightLeft, Truck, Video, MapPin, Activity, Pencil, CheckCircle, RefreshCw, ChevronRight } from 'lucide-react'
 import { format } from 'date-fns'
@@ -653,7 +653,7 @@ function ConsultationModal({ open, onClose }) {
     setLoading(true)
     setLoadError('')
     setSpecialists([])
-    consultationsApi.specialists.list({ is_available: true })
+    usersApi.list({ role: 'specialist' })
       .then(({ data }) => setSpecialists(Array.isArray(data) ? data : data.results || []))
       .catch(() => setLoadError('Could not load specialists. Please try again.'))
       .finally(() => setLoading(false))
@@ -680,7 +680,7 @@ function ConsultationModal({ open, onClose }) {
           {loading ? <Spinner/> : (
             <select value={form.specialist} onChange={e => setForm(f=>({...f,specialist:e.target.value}))} className="input-field">
               <option value="">— Any available specialist —</option>
-              {specialists.map(s => <option key={s.id} value={s.id}>{s.user_name} · {s.specialty_display||s.specialty}</option>)}
+              {specialists.map(s => <option key={s.id} value={s.id}>{s.name || s.email}</option>)}
             </select>
           )}
         </FormField>

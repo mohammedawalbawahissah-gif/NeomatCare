@@ -145,7 +145,7 @@ export const consultationsApi = {
     create:    (data)     => api.post('/api/consultations/specialists/', data),
     detail:    (id)       => api.get(`/api/consultations/specialists/${id}/`),
     update:    (id, data) => api.patch(`/api/consultations/specialists/${id}/`, data),
-    available: ()         => api.get('/api/consultations/specialists/available/'),
+    available: ()         => api.get('/api/consultations/specialists/', { params: { is_available: true } }),
     schedules: (id)       => api.get(`/api/consultations/specialists/${id}/schedules/`),
   },
   messages: {

@@ -636,22 +636,26 @@ function TransportModal({ open, onClose }) {
 }
 
 // ── Consultation Modal ─────────────────────────────────────────────────────────
-// consultationsApi.specialists.available() → SpecialistProfile list
+// consultationsApi.specialists.list({ is_available: true }) → SpecialistProfile list
 // consultationsApi.create({ specialist?, notes? })
 // specialist returns: id, user_name, specialty, specialty_display, is_available
 function ConsultationModal({ open, onClose }) {
   const navigate = useNavigate()
   const [specialists, setSpecialists] = useState([])
-  const [form, setForm]   = useState({ specialist:'', notes:'' })
+  const [form, setForm]       = useState({ specialist:'', notes:'' })
   const [loading, setLoading] = useState(false)
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState('')
+  const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
     if (!open) return
     setLoading(true)
-    consultationsApi.specialists.available()
+    setLoadError('')
+    setSpecialists([])
+    consultationsApi.specialists.list({ is_available: true })
       .then(({ data }) => setSpecialists(Array.isArray(data) ? data : data.results || []))
+      .catch(() => setLoadError('Could not load specialists. Please try again.'))
       .finally(() => setLoading(false))
   }, [open])
 
@@ -670,6 +674,7 @@ function ConsultationModal({ open, onClose }) {
   return (
     <Modal open={open} onClose={onClose} title="Request Teleconsultation">
       <Alert type="error" message={error} className="mb-4"/>
+      <Alert type="error" message={loadError} className="mb-4"/>
       <form onSubmit={handleSubmit} className="space-y-4">
         <FormField label="Specialist" hint="Leave blank to request any available specialist">
           {loading ? <Spinner/> : (

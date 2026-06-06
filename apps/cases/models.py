@@ -2,27 +2,17 @@
 apps/cases/models.py
 --------------------
 Models:
-  Patient       — de-identified patient record (PHI isolated here)
-  EmergencyCase — full clinical record for an obstetric/neonatal emergency
-  TriageNote    — append-only incremental clinical notes on a case
-
-Design notes:
-  - Patient is separated from EmergencyCase so PHI stays isolated.
-    Analytics queries can join on EmergencyCase without touching Patient.
-  - danger_signs stores a list of DangerSign code strings (from referral_engine.py).
-    The referral engine reads these directly to compute requirements.
-  - vital_signs is a JSONField with a known schema — see VITAL_SIGNS_SCHEMA below.
-  - TriageNote is append-only: health workers add notes without editing the
-    main case record, mirroring real clinical documentation practice.
+  Patient          — persistent patient identity, enriched with ANC history
+  ANCVisit         — individual antenatal care visit log entries
+  PatientConsent   — consent record for data use and patient portal
+  EmergencyCase    — full clinical record for an obstetric/neonatal emergency
+  TriageNote       — append-only incremental clinical notes on a case
 """
 import uuid
 from django.db import models
 from django.utils import timezone
 
 
-# ── Danger signs taxonomy ─────────────────────────────────────────────────
-# These codes must match DangerSign enum values in referral_engine.py.
-# Stored as a JSONField list on EmergencyCase.danger_signs.
 class DangerSign(models.TextChoices):
     PPH                  = "PPH",                  "Postpartum Haemorrhage"
     APH                  = "APH",                  "Antepartum Haemorrhage"
@@ -58,16 +48,6 @@ class BloodGroup(models.TextChoices):
     UNKNOWN = "unknown", "Unknown"
 
 
-# ── Expected shape of vital_signs JSONField ───────────────────────────────
-# Documented here for frontend/API consumers.
-# {
-#   "systolic_bp":      120,   # mmHg
-#   "diastolic_bp":      80,   # mmHg
-#   "heart_rate":        88,   # bpm
-#   "respiratory_rate":  18,   # breaths/min
-#   "temperature":      37.2,  # °C
-#   "spo2":              98,   # %
-# }
 VITAL_SIGNS_SCHEMA = {
     "systolic_bp":      int,
     "diastolic_bp":     int,
@@ -78,187 +58,253 @@ VITAL_SIGNS_SCHEMA = {
 }
 
 
+class RiskLevel(models.TextChoices):
+    LOW    = "low",    "Low"
+    MEDIUM = "medium", "Medium"
+    HIGH   = "high",   "High"
+
+
 class Patient(models.Model):
     """
-    De-identified patient record.
+    Persistent patient identity record.
 
-    Stores the minimum clinical and demographic data needed for care and
-    analytics, plus contact/identification fields used at the point of care.
+    A patient persists across pregnancies and facility visits.
+    EmergencyCase.patient is a FK here — one patient can have
+    many cases over time. Soft-delete only; never hard-delete.
 
-    Soft-delete via deleted_at: set this field to now() to remove the
-    patient from all active queries. Never hard-delete patient records.
+    New fields vs original:
+      - date_of_birth / expected_delivery_date — richer demographics
+      - next_of_kin_* — contact for follow-up
+      - risk_level — auto-computed or manually set
+      - patient_user — optional link to a portal User account (role=patient)
+      - notes — free-text background clinical notes
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    # ── Identification fields ─────────────────────────────────────────────
-    patient_name         = models.CharField(
-        max_length=200,
-        blank=True,
-        default="",
-        help_text="Full name of the patient.",
-    )
-    hospital_id          = models.CharField(
-        max_length=100,
-        blank=True,
-        default="",
-        help_text="Hospital or facility-issued patient ID / folder number.",
-    )
-    patient_phone_number = models.CharField(
-        max_length=20,
-        blank=True,
-        default="",
-        help_text="Contact phone number for the patient or next of kin.",
-    )
+    # ── Identification ────────────────────────────────────────────────────
+    patient_name         = models.CharField(max_length=200, blank=True, default="")
+    hospital_id          = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    patient_phone_number = models.CharField(max_length=20, blank=True, default="")
 
-    # ── Demographic / clinical fields ─────────────────────────────────────
+    # ── Demographics ──────────────────────────────────────────────────────
     age         = models.PositiveIntegerField()
+    date_of_birth = models.DateField(null=True, blank=True)
     town        = models.CharField(max_length=100, blank=True)
-    blood_group = models.CharField(
-        max_length=10,
-        choices=BloodGroup.choices,
-        default=BloodGroup.UNKNOWN,
-    )
-    anc_visits  = models.PositiveIntegerField(
-        default=0,
-        help_text="Number of antenatal care visits completed before this emergency.",
+    blood_group = models.CharField(max_length=10, choices=BloodGroup.choices, default=BloodGroup.UNKNOWN)
+    anc_visits  = models.PositiveIntegerField(default=0, help_text="Total ANC visits (auto-updated from ANCVisit log)")
+
+    # ── Next of kin ───────────────────────────────────────────────────────
+    next_of_kin_name         = models.CharField(max_length=200, blank=True)
+    next_of_kin_phone        = models.CharField(max_length=20, blank=True)
+    next_of_kin_relationship = models.CharField(max_length=100, blank=True)
+
+    # ── Obstetric summary ─────────────────────────────────────────────────
+    expected_delivery_date = models.DateField(null=True, blank=True)
+    gravida = models.PositiveIntegerField(null=True, blank=True)
+    parity  = models.PositiveIntegerField(null=True, blank=True)
+
+    # ── Risk ──────────────────────────────────────────────────────────────
+    risk_level = models.CharField(max_length=10, choices=RiskLevel.choices, default=RiskLevel.LOW)
+    risk_flags = models.JSONField(default=list, help_text="List of risk flag strings computed from history")
+
+    # ── Background notes ──────────────────────────────────────────────────
+    notes = models.TextField(blank=True)
+
+    # ── Portal link ───────────────────────────────────────────────────────
+    patient_user = models.OneToOneField(
+        "accounts.User",
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="patient_profile",
+        limit_choices_to={"role": "patient"},
     )
 
-    # Soft delete — never hard-delete patient records
+    # ── Consent ───────────────────────────────────────────────────────────
+    # Convenience shortcut; full consent history is in PatientConsent
+    consent_given    = models.BooleanField(default=False)
+    consent_given_at = models.DateTimeField(null=True, blank=True)
+
+    # ── Soft delete ───────────────────────────────────────────────────────
     deleted_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # ── Facility where first registered ──────────────────────────────────
+    registered_at_facility = models.ForeignKey(
+        "facilities.HealthFacility",
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="registered_patients",
+    )
 
     class Meta:
         ordering = ["-created_at"]
 
     def __str__(self):
-        display = self.patient_name or f"Patient {self.id}"
-        return f"{display} — age {self.age}"
+        return f"{self.patient_name or 'Patient'} — age {self.age}"
 
     @property
-    def is_deleted(self) -> bool:
+    def is_deleted(self):
         return self.deleted_at is not None
 
     def soft_delete(self):
         self.deleted_at = timezone.now()
         self.save(update_fields=["deleted_at"])
 
+    def compute_risk(self):
+        """
+        Compute risk_level and risk_flags from clinical signals.
+        Call after each case or ANC visit is saved.
+        """
+        flags = []
+        if self.parity and self.parity >= 5:
+            flags.append("Grand multipara (parity ≥ 5)")
+        if self.gravida and self.parity and self.gravida > self.parity + 1:
+            flags.append("Previous pregnancy losses")
+        if self.blood_group in ("A-", "B-", "AB-", "O-"):
+            flags.append("Rhesus negative blood group")
+        if self.anc_visits == 0 and self.expected_delivery_date:
+            flags.append("No ANC visits recorded")
+        # Count previous cases with high-risk danger signs
+        high_risk_signs = {"PPH","APH","RUPTURED_UTERUS","ECLAMPSIA","SEVERE_PRE_ECLAMPSIA","CORD_PROLAPSE"}
+        prior_high = self.cases.filter(
+            danger_signs__overlap=list(high_risk_signs)
+        ).count() if hasattr(self, '_prefetched_objects_cache') else \
+            self.cases.filter(danger_signs__len__gt=0).count()
+        if prior_high > 0:
+            flags.append("Prior emergency with high-risk danger sign")
+
+        self.risk_flags = flags
+        if len(flags) >= 3:
+            self.risk_level = RiskLevel.HIGH
+        elif len(flags) >= 1:
+            self.risk_level = RiskLevel.MEDIUM
+        else:
+            self.risk_level = RiskLevel.LOW
+        self.save(update_fields=["risk_level", "risk_flags"])
+
+
+class ANCVisit(models.Model):
+    """
+    Individual antenatal care visit log entry for a patient.
+    Each visit records gestational age, key observations, and any concerns.
+    """
+    id      = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="anc_visit_log")
+
+    visit_date            = models.DateField()
+    gestational_age_weeks = models.PositiveIntegerField(null=True, blank=True)
+    facility              = models.ForeignKey(
+        "facilities.HealthFacility", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="anc_visits"
+    )
+    conducted_by          = models.ForeignKey(
+        "accounts.User", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="anc_visits_conducted"
+    )
+
+    weight_kg        = models.FloatField(null=True, blank=True)
+    bp_systolic      = models.PositiveIntegerField(null=True, blank=True)
+    bp_diastolic     = models.PositiveIntegerField(null=True, blank=True)
+    fetal_heart_rate = models.PositiveIntegerField(null=True, blank=True)
+    fundal_height_cm = models.FloatField(null=True, blank=True)
+
+    notes    = models.TextField(blank=True)
+    concerns = models.TextField(blank=True, help_text="Any clinical concerns noted at this visit")
+
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-visit_date"]
+
+    def __str__(self):
+        return f"ANC visit — {self.patient} on {self.visit_date}"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Keep Patient.anc_visits count in sync
+        count = ANCVisit.objects.filter(patient=self.patient).count()
+        Patient.objects.filter(pk=self.patient_id).update(anc_visits=count)
+
+
+class PatientConsent(models.Model):
+    """
+    Immutable consent record. Each consent action creates a new row;
+    never update or delete rows here. The latest row is the current state.
+    """
+    class ConsentType(models.TextChoices):
+        DATA_USE    = "data_use",    "Data Use & Storage"
+        PORTAL      = "portal",      "Patient Portal Access"
+        SHARING     = "sharing",     "Facility Data Sharing"
+        RESEARCH    = "research",    "Anonymised Research Use"
+
+    class ConsentAction(models.TextChoices):
+        GRANTED  = "granted",  "Granted"
+        REVOKED  = "revoked",  "Revoked"
+        UPDATED  = "updated",  "Updated"
+
+    id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    patient      = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="consents")
+    consent_type = models.CharField(max_length=20, choices=ConsentType.choices)
+    action       = models.CharField(max_length=10, choices=ConsentAction.choices)
+    recorded_by  = models.ForeignKey(
+        "accounts.User", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="consents_recorded"
+    )
+    notes     = models.TextField(blank=True)
+    timestamp = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-timestamp"]
+
+    def __str__(self):
+        return f"{self.consent_type} {self.action} for {self.patient_id} at {self.timestamp:%Y-%m-%d}"
+
 
 class EmergencyCase(models.Model):
-    """
-    Clinical record for an obstetric or neonatal emergency.
-
-    This is the central model — it feeds the referral engine and anchors
-    the full referral lifecycle. Once created, the core clinical fields
-    should not be edited; use TriageNote for incremental documentation.
-    """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    patient = models.ForeignKey(Patient, on_delete=models.PROTECT, related_name="cases")
 
-    # ── Patient link ──────────────────────────────────────────────────────
-    patient = models.ForeignKey(
-        Patient,
-        on_delete=models.PROTECT,   # never cascade-delete a case
-        related_name="cases",
-    )
+    gestational_age_weeks = models.PositiveIntegerField(null=True, blank=True)
+    gravida = models.PositiveIntegerField(null=True, blank=True)
+    parity  = models.PositiveIntegerField(null=True, blank=True)
+    obstetric_history = models.TextField(blank=True)
 
-    # ── Obstetric history ─────────────────────────────────────────────────
-    gestational_age_weeks = models.PositiveIntegerField(
-        null=True, blank=True,
-        help_text="Gestational age in completed weeks.",
-    )
-    gravida = models.PositiveIntegerField(
-        null=True, blank=True,
-        help_text="Total number of pregnancies including current.",
-    )
-    parity  = models.PositiveIntegerField(
-        null=True, blank=True,
-        help_text="Number of deliveries at or beyond 20 weeks.",
-    )
-    obstetric_history = models.TextField(
-        blank=True,
-        help_text="Relevant prior complications, surgeries, or notes.",
-    )
+    presenting_complaint = models.TextField()
+    danger_signs  = models.JSONField(default=list)
+    vital_signs   = models.JSONField(default=dict, blank=True)
+    fetal_heart_rate = models.PositiveIntegerField(null=True, blank=True)
+    membranes_status = models.CharField(max_length=10, choices=MembranesStatus.choices, default=MembranesStatus.UNKNOWN)
 
-    # ── Presenting complaint and danger signs ─────────────────────────────
-    presenting_complaint = models.TextField(
-        help_text="Chief complaint in the health worker's own words.",
-    )
-    # List of DangerSign code strings — read directly by the referral engine
-    # e.g. ["PPH", "SEVERE_ANAEMIA"]
-    danger_signs = models.JSONField(
-        default=list,
-        help_text="List of recognised danger sign codes.",
-    )
+    # Outcome recorded at case level (in addition to referral outcome)
+    maternal_outcome = models.CharField(max_length=10, choices=[("survived","Survived"),("died","Died"),("unknown","Unknown")], default="unknown")
+    neonatal_outcome = models.CharField(max_length=10, choices=[("survived","Survived"),("died","Died"),("unknown","Unknown")], default="unknown")
+    outcome_notes    = models.TextField(blank=True)
 
-    # ── Vital signs ───────────────────────────────────────────────────────
-    # Stored as JSON to allow partial recording (not all vitals may be available)
-    vital_signs = models.JSONField(
-        default=dict,
-        blank=True,
-        help_text=(
-            "Keys: systolic_bp, diastolic_bp, heart_rate, "
-            "respiratory_rate, temperature, spo2"
-        ),
-    )
-    fetal_heart_rate = models.PositiveIntegerField(
-        null=True, blank=True,
-        help_text="Fetal heart rate in beats per minute.",
-    )
-    membranes_status = models.CharField(
-        max_length=10,
-        choices=MembranesStatus.choices,
-        default=MembranesStatus.UNKNOWN,
-    )
-
-    # ── Origin ────────────────────────────────────────────────────────────
-    created_by = models.ForeignKey(
-        "accounts.User",
-        on_delete=models.PROTECT,
-        related_name="created_cases",
-    )
-    referring_facility = models.ForeignKey(
-        "facilities.HealthFacility",
-        on_delete=models.PROTECT,
-        related_name="originated_cases",
-    )
+    created_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="created_cases")
+    referring_facility = models.ForeignKey("facilities.HealthFacility", on_delete=models.PROTECT, related_name="originated_cases")
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "emergency case"
         verbose_name_plural = "emergency cases"
-        indexes = [
-            models.Index(fields=["referring_facility", "-created_at"]),
-        ]
+        indexes = [models.Index(fields=["referring_facility", "-created_at"])]
 
     def __str__(self):
-        signs = ", ".join(self.danger_signs) if self.danger_signs else "no signs recorded"
+        signs = ", ".join(self.danger_signs) if self.danger_signs else "no signs"
         return f"Case {self.id} — {signs}"
 
 
 class TriageNote(models.Model):
-    """
-    Append-only incremental clinical note on an EmergencyCase.
-
-    Health workers add notes as a case evolves without editing the
-    original case record — mirrors real nursing/clinical documentation.
-    Never update or delete triage notes.
-    """
     id             = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    emergency_case = models.ForeignKey(
-        EmergencyCase,
-        on_delete=models.CASCADE,
-        related_name="triage_notes",
-    )
+    emergency_case = models.ForeignKey(EmergencyCase, on_delete=models.CASCADE, related_name="triage_notes")
     note       = models.TextField()
-    created_by = models.ForeignKey(
-        "accounts.User",
-        on_delete=models.PROTECT,
-        related_name="triage_notes",
-    )
+    created_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="triage_notes")
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
-        ordering = ["created_at"]   # chronological order
+        ordering = ["created_at"]
 
     def __str__(self):
-        return f"Note on case {self.emergency_case_id} at {self.created_at:%H:%M}"
+        return f"Note on {self.emergency_case_id} at {self.created_at:%H:%M}"

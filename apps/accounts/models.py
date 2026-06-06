@@ -26,6 +26,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         HEALTHWORKER     = "health_worker",     "Health Worker"
         SPECIALIST = "specialist", "Specialist"
         DRIVER     = "driver",     "Driver"
+        PATIENT    = "patient",   "Patient"
 
     id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name       = models.CharField(max_length=255)

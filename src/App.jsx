@@ -20,7 +20,9 @@ import FacilityPage from '@/pages/facility-admin/FacilityPage'
 import FacilitiesPage from '@/pages/superadmin/FacilitiesPage'
 import UsersPage      from '@/pages/superadmin/UsersPage'
 
-import ProfilePage from '@/pages/ProfilePage'
+import ProfilePage          from '@/pages/ProfilePage'
+import PatientRegisterPage  from '@/pages/auth/PatientRegisterPage'
+import PatientPortalPage    from '@/pages/patients/PatientPortalPage'
 import PatientsPage     from '@/pages/patients/PatientsPage'
 import PatientDetailPage from '@/pages/patients/PatientDetailPage'
 
@@ -62,6 +64,8 @@ export default function App() {
             <Route path="/register" element={<RegisterPage />} />
           </Route>
 
+          <Route path="/patient-register" element={<PatientRegisterPage />} />
+
           {/* ROOT */}
           <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
 
@@ -79,10 +83,13 @@ export default function App() {
               <Route path="cases/:id" element={<CaseDetailPage />} />
             </Route>
 
-            {/* PATIENTS — health_worker, facility_admin, superadmin, patient (portal) */}
-            <Route element={<RequireRole allowed={['health_worker','facility_admin','superadmin','patient']} />}>
+            {/* PATIENTS — staff can list/manage; patient role gets their own portal */}
+            <Route element={<RequireRole allowed={['health_worker','facility_admin','superadmin']} />}>
               <Route path="patients"     element={<PatientsPage />} />
               <Route path="patients/:id" element={<PatientDetailPage />} />
+            </Route>
+            <Route element={<RequireRole allowed={['patient']} />}>
+              <Route path="portal" element={<PatientPortalPage />} />
             </Route>
 
             {/* REFERRALS — health_worker, facility_admin, superadmin */}

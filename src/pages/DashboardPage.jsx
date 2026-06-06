@@ -4,7 +4,7 @@ import { casesApi, referralsApi, transportApi, consultationsApi } from '@/api/cl
 import { StatCard, StatusBadge, PageSpinner, DangerSignList } from '@/components/ui'
 import { ClipboardList, ArrowRightLeft, Truck, Video, AlertTriangle, Clock } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 
 // ── Health Worker Dashboard ───────────────────────────────────────────────────
 function HealthWorkerDashboard() {

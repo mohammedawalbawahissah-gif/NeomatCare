@@ -44,6 +44,9 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     objects = UserManager()
 
+    is_verified  = models.BooleanField(default=False, help_text="Email/SMS verified for patient portal accounts")
+    phone_number = models.CharField(max_length=20, blank=True)
+
     USERNAME_FIELD  = "email"
     REQUIRED_FIELDS = ["name"]
 
@@ -52,3 +55,48 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return f"{self.name} ({self.role})"
+
+
+import random
+from django.utils import timezone
+from datetime import timedelta
+
+
+class OTPVerification(models.Model):
+    class Channel(models.TextChoices):
+        SMS   = "sms",   "SMS"
+        EMAIL = "email", "Email"
+
+    class Purpose(models.TextChoices):
+        REGISTER = "register", "Registration"
+        LOGIN    = "login",    "Login"
+        RESET    = "reset",    "Password Reset"
+
+    id       = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user     = models.ForeignKey(User, on_delete=models.CASCADE, related_name="otp_verifications")
+    otp_code = models.CharField(max_length=6)
+    channel  = models.CharField(max_length=5, choices=Channel.choices)
+    purpose  = models.CharField(max_length=10, choices=Purpose.choices)
+    is_used  = models.BooleanField(default=False)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    @classmethod
+    def generate(cls, user, channel, purpose):
+        """Create a new 6-digit OTP valid for 10 minutes, invalidating prior unused ones."""
+        cls.objects.filter(user=user, purpose=purpose, is_used=False).update(is_used=True)
+        code = str(random.randint(100000, 999999))
+        return cls.objects.create(
+            user=user,
+            otp_code=code,
+            channel=channel,
+            purpose=purpose,
+            expires_at=timezone.now() + timedelta(minutes=10),
+        )
+
+    @property
+    def is_valid(self):
+        return not self.is_used and timezone.now() < self.expires_at

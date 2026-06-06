@@ -53,7 +53,7 @@ class SpecialistProfile(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"{self.user.name} — {self.specialty}"
+        return f"{self.resolved_name} — {self.specialty}"
 
 
 class Consultation(models.Model):

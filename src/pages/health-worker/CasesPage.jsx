@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { casesApi, facilitiesApi, referralsApi, transportApi, consultationsApi } from '@/api/client'
+import { casesApi, facilitiesApi, referralsApi, transportApi, consultationsApi, patientsApi } from '@/api/client'
 import { StatusBadge, PageSpinner, EmptyState, DangerSignList, Spinner, FormField } from '@/components/ui'
 import { ClipboardList, Plus, Clock, AlertTriangle, X, ArrowRightLeft, Truck, Video, MapPin, CheckCircle, ChevronRight } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
@@ -23,6 +23,7 @@ const DANGER_LABELS = {
 
 // Field names match EmergencyCaseCreateSerializer exactly
 const INITIAL_FORM = {
+  patient_id:            null,   // set when linking an existing patient
   patient_name:          '',
   patient_phone_number:  '',   // serializer field: patient_phone_number
   hospital_id:           '',

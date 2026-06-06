@@ -32,6 +32,7 @@ const NAV_BY_ROLE = {
   ],
   superadmin: [
     { to: '/app/dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
+    { to: '/app/patients',       label: 'Patients',       icon: UserCircle },
     { to: '/app/cases',          label: 'All Cases',      icon: ClipboardList },
     { to: '/app/referrals',      label: 'All Referrals',  icon: ArrowRightLeft },
     { to: '/app/facilities',     label: 'Facilities',     icon: Building2 },
@@ -46,6 +47,7 @@ const ROLE_LABELS = {
   facility_admin: 'Facility Admin',
   specialist:     'Specialist',
   driver:         'Driver',
+  patient:         'Patient',
   superadmin:     'Superadmin',
 }
 
@@ -55,6 +57,7 @@ const ROLE_COLORS = {
   specialist:     'bg-purple-100 text-purple-700',
   driver:         'bg-amber-100 text-amber-700',
   superadmin:     'bg-danger-100 text-danger-700',
+  patient:        'bg-teal-100 text-teal-700',
 }
 
 export default function AppLayout({ children }) {

@@ -22,7 +22,7 @@ from .serializers import (
 # ── Patient Views ─────────────────────────────────────────────────────────────
 
 class PatientListCreateView(APIView):
-    permission_classes = [IsAuthenticated, IsHealthWorkerOrFacilityAdmin]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         qs = Patient.objects.filter(deleted_at__isnull=True).select_related(
@@ -48,6 +48,8 @@ class PatientListCreateView(APIView):
         return Response(PatientListSerializer(qs.order_by("-created_at"), many=True).data)
 
     def post(self, request):
+        if request.user.role == 'patient':
+            return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
         serializer = PatientCreateSerializer(data=request.data, context={"request": request})
         if serializer.is_valid():
             patient = serializer.save()

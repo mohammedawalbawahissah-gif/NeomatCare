@@ -639,7 +639,7 @@ function TransportModal({ open, onClose }) {
 // consultationsApi.specialists.list({ is_available: true }) → SpecialistProfile list
 // consultationsApi.create({ specialist?, notes? })
 // specialist returns: id, user_name, specialty, specialty_display, is_available
-function ConsultationModal({ open, onClose }) {
+function ConsultationModal({ open, onClose, caseData }) {
   const navigate = useNavigate()
   const [specialists, setSpecialists] = useState([])
   const [form, setForm]       = useState({ specialist:'', notes:'' })
@@ -653,7 +653,9 @@ function ConsultationModal({ open, onClose }) {
     setLoading(true)
     setLoadError('')
     setSpecialists([])
-    consultationsApi.specialists.list()
+    setForm({ specialist:'', notes:'' })
+    setError('')
+    consultationsApi.specialists.list({ is_available: true })
       .then(({ data }) => setSpecialists(Array.isArray(data) ? data : data.results || []))
       .catch(() => setLoadError('Could not load specialists. Please try again.'))
       .finally(() => setLoading(false))
@@ -662,10 +664,11 @@ function ConsultationModal({ open, onClose }) {
   const handleSubmit = async (e) => {
     e.preventDefault(); setSaving(true)
     try {
-      const { data } = await consultationsApi.create({
+      const payload = {
         ...(form.specialist && { specialist: form.specialist }),
         ...(form.notes      && { notes:      form.notes }),
-      })
+      }
+      const { data } = await consultationsApi.create(payload)
       navigate(`/app/consultations/${data.id}`)
     } catch { setError('Failed to request consultation.') }
     finally { setSaving(false) }
@@ -923,7 +926,7 @@ export default function CaseDetailPage() {
       <EditCaseModal open={editModal} onClose={() => setEditModal(false)} caseData={c} onSaved={updated => { setCaseData(updated); setEditModal(false) }}/>
       {referralModal  && <ReferralModal    open onClose={() => setReferralModal(false)}  caseData={c}/>}
       {transportModal && <TransportModal   open onClose={() => setTransportModal(false)}/>}
-      {consultModal   && <ConsultationModal open onClose={() => setConsultModal(false)}/>}
+      {consultModal   && <ConsultationModal open onClose={() => setConsultModal(false)} caseData={c}/>}
     </div>
   )
 }

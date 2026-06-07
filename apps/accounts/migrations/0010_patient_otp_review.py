@@ -29,14 +29,7 @@ class Migration(migrations.Migration):
             ),
         ),
 
-        # 3. Add is_verified to User
-        migrations.AddField(
-            model_name='user',
-            name='is_verified',
-            field=models.BooleanField(default=False),
-        ),
-
-        # 4. Create OTPVerification table
+        # 2. Create OTPVerification table
         migrations.CreateModel(
             name='OTPVerification',
             fields=[
@@ -54,7 +47,7 @@ class Migration(migrations.Migration):
             },
         ),
 
-        # 5. Create PatientServiceReview table
+        # 3. Create PatientServiceReview table
         migrations.CreateModel(
             name='PatientServiceReview',
             fields=[

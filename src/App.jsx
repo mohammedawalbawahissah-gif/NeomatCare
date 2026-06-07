@@ -23,7 +23,7 @@ import UsersPage      from '@/pages/superadmin/UsersPage'
 
 import ProfilePage from '@/pages/ProfilePage'
 
-import PatientPortalPage from '@/pages/patient/PatientPortalPage'
+import PatientPortalPage from '@/pages/patients/PatientPortalPage'
 
 import NotFoundPage from '@/pages/NotFoundPage'
 

@@ -7,6 +7,11 @@ from django_filters.rest_framework import DjangoFilterBackend
 from .models import Vehicle, TransportRequest, Driver
 from .serializers import VehicleSerializer, TransportRequestSerializer, DriverSerializer
 
+# Roles allowed to manage (write) transport
+TRANSPORT_ADMIN_ROLES = ('superadmin', 'facility_admin')
+# Roles allowed to create transport requests
+TRANSPORT_REQUEST_ROLES = ('superadmin', 'facility_admin', 'health_worker', 'patient')
+
 
 class VehicleViewSet(viewsets.ModelViewSet):
     queryset = Vehicle.objects.select_related("driver").all()
@@ -19,29 +24,17 @@ class VehicleViewSet(viewsets.ModelViewSet):
     ordering = ["-created_at"]
 
     def check_write_permission(self, request):
-        if request.user.role not in ('superadmin', 'facility_admin'):
+        if request.user.role not in TRANSPORT_ADMIN_ROLES:
             raise PermissionDenied("Only admins can manage vehicles.")
 
     def _resolve_driver(self, driver_id):
-        """
-        The frontend sends a User UUID (from usersApi driver dropdown).
-        The Vehicle.driver FK expects a Driver model UUID.
-        This method bridges the two:
-          1. If driver_id already matches a Driver record → use it directly.
-          2. If it matches a User with role=driver → get_or_create a Driver record.
-          3. Otherwise → return None so the serializer skips the field.
-        """
         if not driver_id:
             return None
-
-        # Already a Driver record UUID
         try:
             Driver.objects.get(id=driver_id)
             return str(driver_id)
         except (Driver.DoesNotExist, Exception):
             pass
-
-        # Try resolving from User with role=driver
         try:
             from django.contrib.auth import get_user_model
             User = get_user_model()
@@ -110,17 +103,17 @@ class DriverViewSet(viewsets.ModelViewSet):
     search_fields = ["name", "phone_number", "license_number"]
 
     def create(self, request, *args, **kwargs):
-        if request.user.role not in ('superadmin', 'facility_admin'):
+        if request.user.role not in TRANSPORT_ADMIN_ROLES:
             raise PermissionDenied("Only admins can create driver records.")
         return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
-        if request.user.role not in ('superadmin', 'facility_admin'):
+        if request.user.role not in TRANSPORT_ADMIN_ROLES:
             raise PermissionDenied("Only admins can update driver records.")
         return super().update(request, *args, **kwargs)
 
     def partial_update(self, request, *args, **kwargs):
-        if request.user.role not in ('superadmin', 'facility_admin'):
+        if request.user.role not in TRANSPORT_ADMIN_ROLES:
             raise PermissionDenied("Only admins can update driver records.")
         return super().partial_update(request, *args, **kwargs)
 
@@ -137,10 +130,10 @@ class TransportRequestViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = super().get_queryset()
+        qs   = super().get_queryset()
 
         if user.role == 'superadmin':
-            pass
+            pass  # all requests
 
         elif user.role == 'facility_admin':
             qs = qs.filter(referral__referring_facility=user.facility)
@@ -149,13 +142,28 @@ class TransportRequestViewSet(viewsets.ModelViewSet):
             driver_qs = Driver.objects.filter(name=user.name)
             qs = qs.filter(vehicle__driver__in=driver_qs)
 
+        elif user.role == 'patient':
+            # Patients only see their own requests
+            qs = qs.filter(requested_by=user)
+
         elif self.request.query_params.get("mine") == "true":
             qs = qs.filter(requested_by=user)
 
         return qs
 
+    def create(self, request, *args, **kwargs):
+        if request.user.role not in TRANSPORT_REQUEST_ROLES:
+            raise PermissionDenied("You do not have permission to create transport requests.")
+        return super().create(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         serializer.save(requested_by=self.request.user)
+
+    def update(self, request, *args, **kwargs):
+        # Patients cannot update/reassign requests
+        if request.user.role == 'patient':
+            raise PermissionDenied("Patients cannot update transport requests.")
+        return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
         if request.user.role != 'superadmin':
@@ -164,6 +172,8 @@ class TransportRequestViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["patch"], url_path="status")
     def update_status(self, request, pk=None):
+        if request.user.role == 'patient':
+            raise PermissionDenied("Patients cannot update transport request status.")
         obj = self.get_object()
         serializer = self.get_serializer(obj, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)

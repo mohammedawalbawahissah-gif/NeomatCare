@@ -1,98 +1,97 @@
-"""
-apps/accounts/views.py
-"""
 import logging
-import uuid as _uuid
 
-from django.db.models import Q
-from django.utils.decorators import method_decorator
-from django_ratelimit.decorators import ratelimit
 from rest_framework import status, permissions
 from rest_framework.permissions import AllowAny, IsAuthenticated, BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.exceptions import TokenError
+from django_ratelimit.decorators import ratelimit
+from django.utils.decorators import method_decorator
+from django.db.models import Q
+from django.utils import timezone
+from django.core.mail import send_mail
+from django.conf import settings as django_settings
 
-from .models import OTPVerification, User
+from .models import User, OTPVerification, PatientServiceReview
 from .serializers import (
-    CustomTokenObtainPairSerializer,
-    RegisterSerializer,
-    UserCreateSerializer,
-    UserSerializer,
+    RegisterSerializer, UserSerializer, UserCreateSerializer,
+    CustomTokenObtainPairSerializer, PatientServiceReviewSerializer,
 )
 
 logger = logging.getLogger(__name__)
 
+OTP_EXEMPT_ROLES = {'superadmin'}
 
-# ── Permissions ───────────────────────────────────────────────────────────────
+
+# ── Permissions ──────────────────────────────────────────────────────────────
 
 class IsFacilityAdminOrSuperAdmin(BasePermission):
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role in (
-            "facility_admin", "superadmin"
-        )
+        return request.user.is_authenticated and request.user.role in ('facility_admin', 'superadmin')
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+class IsPatient(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role == 'patient'
 
-def _send_otp(user, otp, phone=None):
-    """
-    Send OTP via Africa's Talking SMS (primary) and Django email (fallback).
-    Safe to call without a phone number — falls back to email only.
-    """
-    msg = (
-        f"[NeoMatCare] Your verification code is {otp.otp_code}. "
-        f"It expires in 10 minutes. Do not share this code."
-    )
-    # SMS
-    if phone:
-        try:
-            from sms_service import send_sms
-            ok = send_sms(phone, msg)
-            if not ok:
-                logger.error("OTP SMS failed for %s (%s) code=%s", user.email, phone, otp.otp_code)
-        except Exception:
-            logger.exception("OTP SMS exception for %s", user.email)
 
-    # Email fallback
+# ── OTP helpers ───────────────────────────────────────────────────────────────
+
+def _send_otp(user: User, otp: OTPVerification) -> bool:
+    """Dispatch OTP via the channel stored on the OTP record. Returns True on success."""
+    if otp.channel == OTPVerification.Channel.SMS:
+        return _send_otp_sms(user, otp.code)
+    return _send_otp_email(user, otp.code)
+
+
+def _send_otp_sms(user: User, code: str) -> bool:
     try:
-        from django.conf import settings as djs
-        from django.core.mail import send_mail
-        send_mail(
-            subject="NeoMatCare — Your Verification Code",
-            message=msg,
-            from_email=getattr(djs, "DEFAULT_FROM_EMAIL", "noreply@neomatcare.app"),
-            recipient_list=[user.email],
-            fail_silently=True,
+        from sms_service import send_sms
+        phone = user.phone_number or ''
+        if not phone:
+            logger.warning("OTP SMS: user %s has no phone number", user.email)
+            return False
+        message = (
+            f"[NeoMatCare] Your verification code is {code}. "
+            f"It expires in 10 minutes. Do not share it."
         )
+        return send_sms(phone, message)
     except Exception:
-        pass
+        logger.exception("OTP SMS send failed for %s", user.email)
+        return False
 
 
-def _issue_tokens(user):
-    """Return a dict with access + refresh tokens and serialised user."""
-    token = RefreshToken.for_user(user)
-    token["name"]        = user.name
-    token["role"]        = user.role
-    token["facility_id"] = str(user.facility_id) if user.facility_id else None
-    return {
-        "access":  str(token.access_token),
-        "refresh": str(token),
-        "user":    UserSerializer(user).data,
-    }
+def _send_otp_email(user: User, code: str) -> bool:
+    try:
+        send_mail(
+            subject="NeoMatCare — Your verification code",
+            message=(
+                f"Hello {user.name},\n\n"
+                f"Your NeoMatCare verification code is: {code}\n\n"
+                f"This code expires in 10 minutes. Do not share it with anyone.\n\n"
+                f"If you did not request this, please ignore this email.\n\n"
+                f"— The NeoMatCare Team"
+            ),
+            from_email=getattr(django_settings, 'DEFAULT_FROM_EMAIL', 'noreply@neomatcare.gh'),
+            recipient_list=[user.email],
+            fail_silently=False,
+        )
+        return True
+    except Exception:
+        logger.exception("OTP email send failed for %s", user.email)
+        return False
 
 
-# ── Registration (all non-superadmin roles) ───────────────────────────────────
+# ── Registration with OTP ─────────────────────────────────────────────────────
 
-@method_decorator(ratelimit(key="ip", rate="5/min", method="POST", block=True), name="post")
+@method_decorator(ratelimit(key='ip', rate='5/min', method='POST', block=True), name='post')
 class RegisterView(APIView):
     """
-    POST /api/auth/register/
-    Accepts all non-superadmin roles.
-    Creates an *inactive* user and sends a 6-digit OTP for verification.
-    SuperAdmin accounts are created only via Django management commands / shell.
+    Step 1 of registration for all non-superadmin roles.
+    Creates an inactive user, generates OTP, dispatches via chosen channel.
+    Returns user_id so the frontend can call VerifyOTPView.
     """
     permission_classes = [AllowAny]
 
@@ -101,120 +100,145 @@ class RegisterView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        role = serializer.validated_data.get("role", "health_worker")
-        if role == "superadmin":
+        user    = serializer.save()
+        role    = user.role
+        channel = request.data.get('otp_channel', 'sms')
+
+        # Superadmin accounts (CLI-created) skip OTP entirely
+        if role in OTP_EXEMPT_ROLES:
+            user.is_active   = True
+            user.is_verified = True
+            user.save(update_fields=['is_active', 'is_verified'])
             return Response(
-                {"role": "SuperAdmin accounts cannot be created via self-registration."},
-                status=status.HTTP_403_FORBIDDEN,
+                {'message': 'Account created successfully.', 'user': UserSerializer(user).data},
+                status=status.HTTP_201_CREATED,
             )
 
-        # Create inactive — activates only after OTP
-        user = serializer.save()
-        user.is_active   = False
-        user.is_verified = False
-        user.save(update_fields=["is_active", "is_verified"])
+        otp     = OTPVerification.generate(user, channel)
+        success = _send_otp(user, otp)
 
-        channel = (
-            OTPVerification.Channel.SMS
-            if user.phone_number
-            else OTPVerification.Channel.EMAIL
-        )
-        otp = OTPVerification.generate(user, channel, OTPVerification.Purpose.REGISTER)
-        _send_otp(user, otp, phone=user.phone_number or None)
-
+        channel_label = 'phone' if channel == 'sms' else 'email'
         return Response(
             {
-                "detail": (
-                    "Account created. A 6-digit verification code has been sent "
-                    + ("to your phone." if user.phone_number else "to your email.")
+                'message': (
+                    f'Account created. A 6-digit verification code has been sent to your '
+                    f'{channel_label}. Enter it to activate your account.'
                 ),
-                "user_id": str(user.id),
+                'user_id':  str(user.id),
+                'channel':  channel,
+                'otp_sent': success,
             },
             status=status.HTTP_201_CREATED,
         )
 
 
-# ── OTP Verification ──────────────────────────────────────────────────────────
-
-@method_decorator(ratelimit(key="ip", rate="10/min", method="POST", block=True), name="post")
+@method_decorator(ratelimit(key='ip', rate='10/min', method='POST', block=True), name='post')
 class VerifyOTPView(APIView):
     """
-    POST /api/auth/verify/
-    Body: { user_id, otp_code }
-    Works for all roles. Activates account and returns JWT tokens.
+    Step 2 of registration — verifies the OTP code.
+    On success, activates the user and issues JWT tokens immediately.
     """
     permission_classes = [AllowAny]
 
     def post(self, request):
-        user_id  = request.data.get("user_id",  "").strip()
-        otp_code = request.data.get("otp_code", "").strip()
+        user_id = request.data.get('user_id', '').strip()
+        code    = request.data.get('code', '').strip()
 
-        if not user_id or not otp_code:
+        if not user_id or not code:
             return Response(
-                {"detail": "user_id and otp_code are required."},
+                {'detail': 'user_id and code are required.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
-            return Response(
-                {"detail": "Invalid verification request."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({'detail': 'Invalid user.'}, status=status.HTTP_400_BAD_REQUEST)
 
         otp = (
             OTPVerification.objects
-            .filter(user=user, otp_code=otp_code, purpose=OTPVerification.Purpose.REGISTER, is_used=False)
-            .order_by("-created_at")
+            .filter(user=user, is_used=False)
+            .order_by('-created_at')
             .first()
         )
 
-        if not otp or not otp.is_valid:
+        if not otp:
             return Response(
-                {"detail": "Invalid or expired code. Request a new one."},
+                {'detail': 'No pending verification code. Please request a new one.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if otp.is_expired:
+            return Response(
+                {'detail': 'This code has expired. Please request a new one.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if otp.code != code:
+            return Response(
+                {'detail': 'Incorrect code. Please try again.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Mark OTP used and activate user
         otp.is_used = True
-        otp.save(update_fields=["is_used"])
+        otp.save(update_fields=['is_used'])
 
         user.is_active   = True
         user.is_verified = True
-        user.save(update_fields=["is_active", "is_verified"])
+        user.save(update_fields=['is_active', 'is_verified'])
 
-        return Response({"detail": "Account verified successfully.", **_issue_tokens(user)})
+        # Issue tokens so user lands straight in the app
+        refresh = RefreshToken.for_user(user)
+        return Response(
+            {
+                'message': 'Account verified successfully.',
+                'access':  str(refresh.access_token),
+                'refresh': str(refresh),
+                'user':    UserSerializer(user).data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
-@method_decorator(ratelimit(key="ip", rate="3/min", method="POST", block=True), name="post")
+@method_decorator(ratelimit(key='ip', rate='3/min', method='POST', block=True), name='post')
 class ResendOTPView(APIView):
-    """
-    POST /api/auth/resend-otp/
-    Body: { user_id }
-    Resends a fresh OTP to the user's phone or email.
-    """
+    """Resend a fresh OTP to the same channel the user originally chose."""
     permission_classes = [AllowAny]
 
     def post(self, request):
-        user_id = request.data.get("user_id", "").strip()
+        user_id = request.data.get('user_id', '').strip()
+        if not user_id:
+            return Response({'detail': 'user_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             user = User.objects.get(id=user_id, is_active=False)
         except User.DoesNotExist:
-            return Response({"detail": "Invalid request."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'detail': 'User not found or already verified.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        channel = (
-            OTPVerification.Channel.SMS
-            if user.phone_number
-            else OTPVerification.Channel.EMAIL
+        # Determine channel from most recent OTP, or default to sms
+        last = OTPVerification.objects.filter(user=user).order_by('-created_at').first()
+        channel = last.channel if last else OTPVerification.Channel.SMS
+
+        otp     = OTPVerification.generate(user, channel)
+        success = _send_otp(user, otp)
+
+        return Response(
+            {
+                'message': 'A new code has been sent.',
+                'channel': channel,
+                'otp_sent': success,
+            },
+            status=status.HTTP_200_OK,
         )
-        otp = OTPVerification.generate(user, channel, OTPVerification.Purpose.REGISTER)
-        _send_otp(user, otp, phone=user.phone_number or None)
-        return Response({"detail": "A new verification code has been sent."})
 
 
-# ── Login / Logout / Me ───────────────────────────────────────────────────────
+# ── Standard auth views ───────────────────────────────────────────────────────
 
-@method_decorator(ratelimit(key="ip", rate="5/min", method="POST", block=True), name="post")
+@method_decorator(ratelimit(key='ip', rate='5/min', method='POST', block=True), name='post')
 class LoginView(TokenObtainPairView):
     permission_classes = [AllowAny]
     serializer_class   = CustomTokenObtainPairSerializer
@@ -224,18 +248,15 @@ class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        refresh_token = request.data.get("refresh")
+        refresh_token = request.data.get('refresh')
         if not refresh_token:
-            return Response(
-                {"detail": "Refresh token is required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({'detail': 'Refresh token is required.'}, status=status.HTTP_400_BAD_REQUEST)
         try:
             token = RefreshToken(refresh_token)
             token.blacklist()
-            return Response({"message": "Logged out successfully."}, status=status.HTTP_205_RESET_CONTENT)
+            return Response({'message': 'Logged out successfully.'}, status=status.HTTP_205_RESET_CONTENT)
         except TokenError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class MeView(APIView):
@@ -246,7 +267,7 @@ class MeView(APIView):
 
     def patch(self, request):
         user    = request.user
-        allowed = {"name", "email"}
+        allowed = {"name", "email", "phone_number"}
         data    = {k: v for k, v in request.data.items() if k in allowed}
         for field, value in data.items():
             setattr(user, field, value)
@@ -275,63 +296,38 @@ class ChangePasswordView(APIView):
         return Response({"message": "Password changed successfully."})
 
 
-# ── User Management (admin) ───────────────────────────────────────────────────
+# ── Patient portal views ──────────────────────────────────────────────────────
 
-class UserListView(APIView):
-    permission_classes = [IsAuthenticated, IsFacilityAdminOrSuperAdmin]
+class PatientMeView(APIView):
+    """Read-only patient profile — returns the authenticated patient's own user record."""
+    permission_classes = [IsAuthenticated, IsPatient]
 
     def get(self, request):
-        qs = User.objects.select_related("facility").all()
+        return Response(UserSerializer(request.user).data)
 
-        if request.user.role == "facility_admin":
-            qs = qs.filter(facility=request.user.facility)
 
-        role     = request.query_params.get("role")
-        facility = request.query_params.get("facility")
-        search   = request.query_params.get("search")
-        active   = request.query_params.get("is_active")
+class PatientServiceReviewListCreateView(APIView):
+    """List all reviews by this patient, or submit a new one."""
+    permission_classes = [IsAuthenticated, IsPatient]
 
-        if role:
-            qs = qs.filter(role=role)
-        if facility and request.user.role == "superadmin":
-            qs = qs.filter(facility__id=facility)
-        if search:
-            qs = qs.filter(Q(name__icontains=search) | Q(email__icontains=search))
-        if active is not None:
-            qs = qs.filter(is_active=active.lower() == "true")
-
-        return Response(UserSerializer(qs, many=True).data)
+    def get(self, request):
+        reviews = PatientServiceReview.objects.filter(patient=request.user)
+        return Response(PatientServiceReviewSerializer(reviews, many=True).data)
 
     def post(self, request):
-        """
-        Admin-created users (e.g. superadmin creating a specialist) are
-        activated immediately — no OTP required.
-        """
-        serializer = UserCreateSerializer(data=request.data)
+        serializer = PatientServiceReviewSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.save(patient=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-        if request.user.role == "facility_admin":
-            role = serializer.validated_data.get("role", "health_worker")
-            if role == "superadmin":
-                return Response(
-                    {"role": "You cannot assign the superadmin role."},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-            serializer.validated_data["facility"] = request.user.facility_id
 
-        user = serializer.save()
-        # Admin-created accounts are pre-verified
-        user.is_active   = True
-        user.is_verified = True
-        user.save(update_fields=["is_active", "is_verified"])
-        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
-
+# ── Admin user management ─────────────────────────────────────────────────────
 
 class UserDetailView(APIView):
     permission_classes = [IsAuthenticated, IsFacilityAdminOrSuperAdmin]
 
-    def _get_object(self, pk, request):
+    def get_object(self, pk, request):
         try:
             user = User.objects.select_related("facility").get(pk=pk)
         except User.DoesNotExist:
@@ -346,7 +342,7 @@ class UserDetailView(APIView):
         return user, None
 
     def patch(self, request, pk):
-        user, err = self._get_object(pk, request)
+        user, err = self.get_object(pk, request)
         if err:
             return err
 
@@ -354,12 +350,10 @@ class UserDetailView(APIView):
         if request.user.role == "facility_admin":
             allowed -= {"facility"}
             if request.data.get("role") == "superadmin":
-                return Response(
-                    {"role": "You cannot assign the superadmin role."},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
+                return Response({"role": "You cannot assign the superadmin role."}, status=status.HTTP_403_FORBIDDEN)
 
         data = {k: v for k, v in request.data.items() if k in allowed}
+
         if "facility" in data:
             from apps.facilities.models import HealthFacility
             try:
@@ -374,20 +368,16 @@ class UserDetailView(APIView):
 
     def delete(self, request, pk):
         if request.user.role != "superadmin":
-            return Response(
-                {"detail": "Only superadmins can delete users."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        user, err = self._get_object(pk, request)
+            return Response({"detail": "Only superadmins can delete users."}, status=status.HTTP_403_FORBIDDEN)
+
+        user, err = self.get_object(pk, request)
         if err:
             return err
         if user.pk == request.user.pk:
-            return Response(
-                {"detail": "You cannot delete your own account."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({"detail": "You cannot delete your own account."}, status=status.HTTP_400_BAD_REQUEST)
 
-        if request.query_params.get("hard", "").lower() == "true":
+        hard_delete = request.query_params.get("hard", "").lower() == "true"
+        if hard_delete:
             from django.db import ProtectedError
             try:
                 user.delete()
@@ -395,20 +385,66 @@ class UserDetailView(APIView):
             except ProtectedError as e:
                 related = list({obj.__class__.__name__ for obj in list(e.protected_objects)[:10]})
                 return Response(
-                    {"detail": f"Cannot delete — protected records exist ({', '.join(related)}). Deactivate instead."},
+                    {"detail": (
+                        "Cannot delete this user — they have protected clinical records "
+                        f"({', '.join(related)}). Deactivate them instead, "
+                        "or reassign their records first."
+                    )},
                     status=status.HTTP_409_CONFLICT,
                 )
 
+        import uuid as _uuid
         user.is_active    = False
+        user.phone_number = ""
         user.email        = f"deleted_{_uuid.uuid4().hex[:8]}@removed.invalid"
-        user.save(update_fields=["is_active", "email"])
+        user.save(update_fields=["is_active", "email", "phone_number"])
         return Response(
-            {"detail": "User deactivated. Clinical records preserved."},
+            {"detail": "User deactivated. Their clinical records have been preserved."},
             status=status.HTTP_200_OK,
         )
 
 
-# ── Misc ──────────────────────────────────────────────────────────────────────
+class UserListView(APIView):
+    permission_classes = [IsAuthenticated, IsFacilityAdminOrSuperAdmin]
+
+    def get(self, request):
+        queryset = User.objects.select_related("facility").all()
+
+        if request.user.role == "facility_admin":
+            queryset = queryset.filter(facility=request.user.facility)
+
+        role     = request.query_params.get("role")
+        facility = request.query_params.get("facility")
+        search   = request.query_params.get("search")
+        active   = request.query_params.get("is_active")
+
+        if role:
+            queryset = queryset.filter(role=role)
+        if facility and request.user.role == "superadmin":
+            queryset = queryset.filter(facility__id=facility)
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search) | Q(email__icontains=search)
+            )
+        if active is not None:
+            queryset = queryset.filter(is_active=active.lower() == "true")
+
+        return Response(UserSerializer(queryset, many=True).data)
+
+    def post(self, request):
+        serializer = UserCreateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        if request.user.role == "facility_admin":
+            role = serializer.validated_data.get("role", "health_worker")
+            if role == "superadmin":
+                return Response({"role": "You cannot assign the superadmin role."}, status=status.HTTP_403_FORBIDDEN)
+            serializer.validated_data["facility"] = request.user.facility_id
+
+        user = serializer.save()
+        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
+
 
 class PushTokenView(APIView):
     permission_classes = [IsAuthenticated]
@@ -418,10 +454,7 @@ class PushTokenView(APIView):
         if not token:
             return Response({"detail": "token is required."}, status=status.HTTP_400_BAD_REQUEST)
         if not token.startswith("ExponentPushToken"):
-            return Response(
-                {"detail": "Invalid token format. Expected ExponentPushToken[...]."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({"detail": "Invalid token format."}, status=status.HTTP_400_BAD_REQUEST)
         request.user.expo_push_token = token
         request.user.save(update_fields=["expo_push_token"])
         return Response({"detail": "Push token registered."}, status=status.HTTP_200_OK)
@@ -434,8 +467,7 @@ class SpecialistSearchView(APIView):
         query = request.query_params.get("q", "").strip()
         if len(query) < 2:
             return Response([])
-        users = (
-            User.objects.filter(role="specialist", is_active=True, name__icontains=query)
-            .values("id", "name", "email")[:10]
-        )
+        users = User.objects.filter(
+            role="specialist", is_active=True, name__icontains=query
+        ).values("id", "name", "email")[:10]
         return Response(list(users))

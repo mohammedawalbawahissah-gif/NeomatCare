@@ -30,7 +30,13 @@ class PatientListCreateView(APIView):
         ).prefetch_related("cases")
 
         user = request.user
-        if user.role == "facility_admin":
+        if user.role == "patient":
+            # Portal users can only see their own linked patient record
+            if hasattr(user, "patient_profile"):
+                qs = qs.filter(id=user.patient_profile.id)
+            else:
+                return Response([])
+        elif user.role == "facility_admin":
             qs = qs.filter(registered_at_facility=user.facility)
 
         q = request.query_params.get("q", "").strip()

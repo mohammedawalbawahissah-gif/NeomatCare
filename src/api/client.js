@@ -1,8 +1,6 @@
 /**
  * src/api/client.js
  * Axios client for NeoMatCare web frontend.
- * Generated from backend source: accounts, cases, consultations,
- * facilities, referrals, transport apps.
  */
 import axios from 'axios'
 
@@ -10,8 +8,6 @@ export const BASE_URL =
   import.meta.env.VITE_API_URL || 'https://neomatcare-production.up.railway.app'
 
 // ── Public client (no auth, no redirect) ─────────────────────────────────────
-// Use this for unauthenticated endpoints like facilities list on RegisterPage.
-// It never touches localStorage and never redirects to /login.
 export const publicApi = axios.create({
   baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
@@ -23,22 +19,19 @@ export const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// ── Attach access token to every request ─────────────────────────────────────
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token')
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
 
-// ── Helper: only redirect to /login from protected pages ─────────────────────
-const PUBLIC_PATHS = ['/login', '/register']
+const PUBLIC_PATHS = ['/login', '/register', '/patient-register']
 function redirectToLogin() {
   if (!PUBLIC_PATHS.some(p => window.location.pathname.startsWith(p))) {
     window.location.href = '/login'
   }
 }
 
-// ── Auto-refresh on 401 ───────────────────────────────────────────────────────
 let isRefreshing = false
 let queue = []
 
@@ -55,9 +48,9 @@ api.interceptors.response.use(
           return api(original)
         })
       }
-      original._retry = true
-      isRefreshing = true
-      const refresh = localStorage.getItem('refresh_token')
+      original._retry  = true
+      isRefreshing     = true
+      const refresh    = localStorage.getItem('refresh_token')
       if (!refresh) {
         isRefreshing = false
         localStorage.clear()
@@ -89,6 +82,8 @@ api.interceptors.response.use(
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export const authApi = {
   register:       (data)    => publicApi.post('/api/auth/register/', data),
+  verifyOtp:      (data)    => publicApi.post('/api/auth/verify-otp/', data),
+  resendOtp:      (data)    => publicApi.post('/api/auth/resend-otp/', data),
   login:          (data)    => publicApi.post('/api/auth/login/', data),
   refresh:        (refresh) => publicApi.post('/api/auth/token/refresh/', { refresh }),
   logout:         (refresh) => api.post('/api/auth/logout/', { refresh }),
@@ -111,6 +106,15 @@ export const specialistSearchApi = {
   search: (q) => api.get('/api/auth/specialists/search/', { params: { q } }),
 }
 
+// ── Patient portal ────────────────────────────────────────────────────────────
+export const patientApi = {
+  me:            ()      => api.get('/api/auth/patient/me/'),
+  reviews:       {
+    list:   ()     => api.get('/api/auth/patient/reviews/'),
+    create: (data) => api.post('/api/auth/patient/reviews/', data),
+  },
+}
+
 // ── Cases ─────────────────────────────────────────────────────────────────────
 export const casesApi = {
   list:              ()         => api.get('/api/cases/'),
@@ -119,31 +123,6 @@ export const casesApi = {
   update:            (id, data) => api.patch(`/api/cases/${id}/`, data),
   triageNote:        (id, note) => api.post(`/api/cases/${id}/triage-note/`, { note }),
   suggestFacilities: (id)       => api.get(`/api/cases/${id}/suggest-facilities/`),
-}
-
-// ── Patients ─────────────────────────────────────────────────────────────────
-export const patientsApi = {
-  list:        (params)   => api.get('/api/cases/patients/', { params }),
-  create:      (data)     => api.post('/api/cases/patients/', data),
-  detail:      (id)       => api.get(`/api/cases/patients/${id}/`),
-  update:      (id, data) => api.patch(`/api/cases/patients/${id}/`, data),
-  delete:      (id)       => api.delete(`/api/cases/patients/${id}/`),
-  cases:       (id)       => api.get(`/api/cases/patients/${id}/cases/`),
-  computeRisk: (id)       => api.post(`/api/cases/patients/${id}/compute-risk/`),
-  ancVisits: {
-    list:   (patientId)         => api.get(`/api/cases/patients/${patientId}/anc-visits/`),
-    create: (patientId, data)   => api.post(`/api/cases/patients/${patientId}/anc-visits/`, data),
-    update: (patientId, visitId, data) => api.patch(`/api/cases/patients/${patientId}/anc-visits/${visitId}/`, data),
-    delete: (patientId, visitId)      => api.delete(`/api/cases/patients/${patientId}/anc-visits/${visitId}/`),
-  },
-  consent: {
-    list:   (patientId)       => api.get(`/api/cases/patients/${patientId}/consent/`),
-    record: (patientId, data) => api.post(`/api/cases/patients/${patientId}/consent/`, data),
-  },
-  portal: {
-    grant:  (patientId, data) => api.post(`/api/cases/patients/${patientId}/grant-portal/`, data),
-    revoke: (patientId)       => api.post(`/api/cases/patients/${patientId}/revoke-portal/`),
-  },
 }
 
 // ── Referrals ─────────────────────────────────────────────────────────────────
@@ -209,7 +188,7 @@ export const transportApi = {
   requests: {
     list:         (params)   => api.get('/api/transport/requests/', { params }),
     create:       (data)     => api.post('/api/transport/requests/', data),
-    mine:         ()         => api.get('/api/transport/requests/', { params: { mine: true } }),
+    mine:         ()         => api.get('/api/transport/requests/'),
     detail:       (id)       => api.get(`/api/transport/requests/${id}/`),
     updateStatus: (id, data) => api.patch(`/api/transport/requests/${id}/status/`, data),
   },

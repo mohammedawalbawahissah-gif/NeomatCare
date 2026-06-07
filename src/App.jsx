@@ -2,9 +2,10 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import AppLayout from '@/components/layout/AppLayout'
 
-import LoginPage    from '@/pages/auth/LoginPage'
-import RegisterPage from '@/pages/auth/RegisterPage'
-import DashboardPage from '@/pages/DashboardPage'
+import LoginPage           from '@/pages/auth/LoginPage'
+import RegisterPage        from '@/pages/auth/RegisterPage'
+import PatientRegisterPage from '@/pages/auth/PatientRegisterPage'
+import DashboardPage       from '@/pages/DashboardPage'
 
 import CasesPage      from '@/pages/health-worker/CasesPage'
 import CaseDetailPage from '@/pages/health-worker/CaseDetailPage'
@@ -20,11 +21,9 @@ import FacilityPage from '@/pages/facility-admin/FacilityPage'
 import FacilitiesPage from '@/pages/superadmin/FacilitiesPage'
 import UsersPage      from '@/pages/superadmin/UsersPage'
 
-import ProfilePage          from '@/pages/ProfilePage'
-import PatientRegisterPage  from '@/pages/auth/PatientRegisterPage'
-import PatientPortalPage    from '@/pages/patients/PatientPortalPage'
-import PatientsPage     from '@/pages/patients/PatientsPage'
-import PatientDetailPage from '@/pages/patients/PatientDetailPage'
+import ProfilePage from '@/pages/ProfilePage'
+
+import PatientPortalPage from '@/pages/patient/PatientPortalPage'
 
 import NotFoundPage from '@/pages/NotFoundPage'
 
@@ -36,18 +35,19 @@ function RequireAuth() {
   return <AppLayout><Outlet /></AppLayout>
 }
 
-// Role values match backend User.Role choices exactly:
-// superadmin, facility_admin, health_worker, specialist, driver
 function RequireRole({ allowed }) {
   const { role } = useAuth()
-  if (!allowed.includes(role)) return <Navigate to="/app/dashboard" replace />
+  if (!allowed.includes(role)) {
+    // Redirect patients to their portal, others to dashboard
+    return <Navigate to={role === 'patient' ? '/app/portal' : '/app/dashboard'} replace />
+  }
   return <Outlet />
 }
 
 function RedirectIfAuth() {
-  const { isAuthenticated, loading } = useAuth()
+  const { isAuthenticated, loading, role } = useAuth()
   if (loading) return null
-  if (isAuthenticated) return <Navigate to="/app/dashboard" replace />
+  if (isAuthenticated) return <Navigate to={role === 'patient' ? '/app/portal' : '/app/dashboard'} replace />
   return <Outlet />
 }
 
@@ -60,11 +60,10 @@ export default function App() {
 
           {/* PUBLIC */}
           <Route element={<RedirectIfAuth />}>
-            <Route path="/login"    element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/login"            element={<LoginPage />} />
+            <Route path="/register"         element={<RegisterPage />} />
+            <Route path="/patient-register" element={<PatientRegisterPage />} />
           </Route>
-
-          <Route path="/patient-register" element={<PatientRegisterPage />} />
 
           {/* ROOT */}
           <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
@@ -72,24 +71,22 @@ export default function App() {
           {/* PROTECTED */}
           <Route path="/app" element={<RequireAuth />}>
             <Route index element={<Navigate to="dashboard" replace />} />
-            <Route path="dashboard" element={<DashboardPage />} />
+
+            {/* Dashboard — redirect patients away */}
+            <Route path="dashboard" element={<RoleAwareDashboard />} />
 
             {/* PROFILE — all authenticated users */}
             <Route path="profile" element={<ProfilePage />} />
+
+            {/* PATIENT PORTAL */}
+            <Route element={<RequireRole allowed={['patient']} />}>
+              <Route path="portal" element={<PatientPortalPage />} />
+            </Route>
 
             {/* CASES — health_worker, facility_admin, superadmin */}
             <Route element={<RequireRole allowed={['health_worker','facility_admin','superadmin']} />}>
               <Route path="cases"     element={<CasesPage />} />
               <Route path="cases/:id" element={<CaseDetailPage />} />
-            </Route>
-
-            {/* PATIENTS — staff can list/manage; patient role gets their own portal */}
-            <Route element={<RequireRole allowed={['health_worker','facility_admin','superadmin']} />}>
-              <Route path="patients"     element={<PatientsPage />} />
-              <Route path="patients/:id" element={<PatientDetailPage />} />
-            </Route>
-            <Route element={<RequireRole allowed={['patient']} />}>
-              <Route path="portal" element={<PatientPortalPage />} />
             </Route>
 
             {/* REFERRALS — health_worker, facility_admin, superadmin */}
@@ -115,7 +112,7 @@ export default function App() {
               <Route path="facility" element={<FacilityPage />} />
             </Route>
 
-            {/* USERS — superadmin + facility_admin (backend filters by facility for facility_admin) */}
+            {/* USERS — superadmin + facility_admin */}
             <Route element={<RequireRole allowed={['superadmin','facility_admin']} />}>
               <Route path="users" element={<UsersPage />} />
             </Route>
@@ -133,4 +130,11 @@ export default function App() {
       </BrowserRouter>
     </AuthProvider>
   )
+}
+
+// Inline helper — sends patients to portal, others see the real dashboard
+function RoleAwareDashboard() {
+  const { role } = useAuth()
+  if (role === 'patient') return <Navigate to="/app/portal" replace />
+  return <DashboardPage />
 }

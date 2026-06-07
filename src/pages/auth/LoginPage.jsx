@@ -8,9 +8,10 @@ const labelStyle = { display:"block", fontSize:"0.875rem", fontWeight:500, color
 
 export default function LoginPage() {
   const { login } = useAuth()
-  const navigate = useNavigate()
-  const [params] = useSearchParams()
-  const registered = params.get("registered") === "1"
+  const navigate  = useNavigate()
+  const [params]  = useSearchParams()
+  const registered   = params.get("registered")   === "1"
+  const verified     = params.get("verified")      === "1"
 
   const [form, setForm]       = useState({ email:"", password:"" })
   const [showPw, setShowPw]   = useState(false)
@@ -23,8 +24,9 @@ export default function LoginPage() {
     e.preventDefault()
     setError(""); setLoading(true)
     try {
-      await login(form.email, form.password)
-      navigate("/app/dashboard")
+      const user = await login(form.email, form.password)
+      // Send patients straight to their portal
+      navigate(user.role === "patient" ? "/app/portal" : "/app/dashboard")
     } catch (err) {
       setError(err.response?.data?.detail || "Invalid email or password.")
     } finally { setLoading(false) }
@@ -45,9 +47,10 @@ export default function LoginPage() {
           <h2 style={{ fontFamily:"Georgia, serif", fontSize:"1.35rem", color:"#0f172a", marginBottom:"0.25rem" }}>Welcome back</h2>
           <p style={{ color:"#64748b", fontSize:"0.875rem", marginBottom:"1.5rem" }}>Sign in to your account</p>
 
-          {registered && (
+          {(registered || verified) && (
             <div style={{ display:"flex", alignItems:"center", gap:"8px", background:"#f0f9f4", border:"1px solid #bbe3ce", borderRadius:"8px", padding:"0.75rem 1rem", color:"#1a5e42", fontSize:"0.875rem", marginBottom:"1rem" }}>
-              <CheckCircle size={16} /> Account created successfully. Sign in below.
+              <CheckCircle size={16} />
+              {verified ? "Account verified! Sign in below." : "Account created. Sign in below."}
             </div>
           )}
           {error && (
@@ -77,10 +80,24 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <p style={{ textAlign:"center", fontSize:"0.875rem", color:"#64748b", marginTop:"1.5rem" }}>
-            No account?{" "}
-            <Link to="/register" style={{ color:"#207652", fontWeight:600, textDecoration:"none" }}>Create one</Link>
+          {/* Staff register link */}
+          <p style={{ textAlign:"center", fontSize:"0.875rem", color:"#64748b", marginTop:"1.25rem" }}>
+            Staff account?{" "}
+            <Link to="/register" style={{ color:"#207652", fontWeight:600, textDecoration:"none" }}>Register here</Link>
           </p>
+
+          {/* Divider */}
+          <div style={{ display:"flex", alignItems:"center", gap:"8px", margin:"1rem 0" }}>
+            <div style={{ flex:1, height:"1px", background:"#e2e8f0" }} />
+            <span style={{ fontSize:"0.75rem", color:"#94a3b8" }}>OR</span>
+            <div style={{ flex:1, height:"1px", background:"#e2e8f0" }} />
+          </div>
+
+          {/* Patient register link */}
+          <Link to="/patient-register" style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:"8px", padding:"11px", background:"#f0f9f4", border:"1.5px solid #2f9466", borderRadius:"10px", color:"#1a5e42", fontSize:"0.875rem", fontWeight:600, textDecoration:"none" }}>
+            <Heart size={15} fill="#2f9466" color="#2f9466" />
+            Patient? Create your patient account
+          </Link>
         </div>
       </div>
     </div>

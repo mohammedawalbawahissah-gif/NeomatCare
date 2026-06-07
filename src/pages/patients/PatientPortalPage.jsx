@@ -1,504 +1,664 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { patientsApi, publicApi, api } from '@/api/client'
-import { PageSpinner, Alert, Spinner } from '@/components/ui'
+import { patientApi, transportApi } from '@/api/client'
 import {
-  Baby, Star, Phone, BookOpen, ChevronRight, ChevronDown,
-  CheckCircle, MessageCircle, Clock, AlertTriangle, Heart,
-  Send, MapPin, Calendar, Activity, ShieldCheck, UserCircle
+  Baby, Star, PhoneCall, Truck, HeartPulse,
+  ChevronDown, ChevronUp, Send, Plus, AlertTriangle,
+  CheckCircle, Clock, MapPin, Calendar, Phone,
+  User, Mail, Shield, RotateCcw,
 } from 'lucide-react'
 
-// ── Pregnancy Coach ───────────────────────────────────────────────────────────
-const WEEKS = [
-  { range:[1,4],   title:'Weeks 1–4',   subtitle:'Very early pregnancy', icon:'🌱',
-    tips:['Take folic acid (400–800 mcg) daily to prevent neural tube defects.','Avoid alcohol, smoking, and unprescribed medications.','Book your first antenatal appointment as soon as possible.'],
-    warning:'Watch for: heavy bleeding, severe cramps, or fever — go to a facility immediately.' },
-  { range:[5,12],  title:'Weeks 5–12',  subtitle:'First trimester', icon:'🫘',
-    tips:['Nausea is common — eat small frequent meals and stay hydrated.','Attend your first ANC visit for blood tests, HIV testing, and booking.','Avoid raw or undercooked meat and unpasteurised dairy.'],
-    warning:'Watch for: severe vomiting preventing any fluid intake, heavy bleeding, or one-sided pain.' },
-  { range:[13,27], title:'Weeks 13–27', subtitle:'Second trimester', icon:'🤰',
-    tips:['Baby movements usually start around week 18–20 — note when you first feel them.','Attend ANC visits at weeks 16, 20, and 26.','Sleep on your left side to improve blood flow to baby.','Iron supplements are important — take with orange juice for better absorption.'],
-    warning:'Watch for: reduced or absent baby movements, severe headache, blurred vision, swollen face/hands.' },
-  { range:[28,36], title:'Weeks 28–36', subtitle:'Late second / early third trimester', icon:'👶',
-    tips:['Count baby kicks daily — you should feel at least 10 movements in 2 hours.','Watch for signs of pre-eclampsia: severe headache, visual changes, upper abdominal pain.','Prepare your birth plan and know your nearest facility.','Attend ANC visits every 2–4 weeks from week 28.'],
-    warning:'Watch for: severe headache, sudden swelling, reduced movements, bleeding, or fluid leaking.' },
-  { range:[37,40], title:'Weeks 37–40', subtitle:'Full term', icon:'🏥',
-    tips:['Your baby is ready to be born — go to a facility when contractions are 5 minutes apart.','Pack your hospital bag: documents, clothes for you and baby, sanitary items.','Know the danger signs of labour that need immediate attention.'],
-    warning:'Go to a facility IMMEDIATELY for: heavy bleeding, cord prolapse, baby not moving, severe pain, or difficulty breathing.' },
+// ── Shared styles ─────────────────────────────────────────────────────────────
+const card  = { background:'white', borderRadius:'14px', padding:'1.5rem', boxShadow:'0 1px 4px rgba(0,0,0,0.07)', marginBottom:'1rem' }
+const btn   = (color='#207652') => ({ display:'inline-flex', alignItems:'center', gap:'6px', padding:'10px 18px', background:color, color:'white', border:'none', borderRadius:'8px', fontSize:'0.875rem', fontWeight:600, cursor:'pointer' })
+const input = { width:'100%', padding:'9px 12px', border:'1px solid #e2e8f0', borderRadius:'8px', fontSize:'0.875rem', outline:'none', boxSizing:'border-box', background:'white' }
+const label = { display:'block', fontSize:'0.8rem', fontWeight:500, color:'#374151', marginBottom:'4px' }
+
+// ── 1. Pregnancy Guide ────────────────────────────────────────────────────────
+const TRIMESTERS = [
+  {
+    title: 'First Trimester (Weeks 1–12)',
+    color: '#dcfce7',
+    border: '#86efac',
+    accent: '#166534',
+    tips: [
+      'Attend your first antenatal care (ANC) visit as early as possible.',
+      'Start folic acid supplements (400 mcg/day) to prevent neural tube defects.',
+      'Avoid alcohol, tobacco, and unprescribed medications.',
+      'Eat small, frequent meals to manage nausea.',
+      'Stay hydrated — aim for 8–10 glasses of water daily.',
+      'Rest as much as possible; fatigue is normal.',
+    ],
+    danger: [
+      'Heavy vaginal bleeding',
+      'Severe abdominal cramps',
+      'High fever (above 38°C)',
+      'Fainting or loss of consciousness',
+    ],
+  },
+  {
+    title: 'Second Trimester (Weeks 13–27)',
+    color: '#fef9c3',
+    border: '#fde047',
+    accent: '#713f12',
+    tips: [
+      'Continue ANC visits — typically monthly during this period.',
+      'Sleep on your left side to improve blood flow to baby.',
+      'Eat iron-rich foods (beans, dark greens, lean meat) to prevent anaemia.',
+      'Take iron and folate supplements as prescribed.',
+      'Start monitoring baby movements after week 20.',
+      'Avoid standing for long periods without rest.',
+    ],
+    danger: [
+      'No foetal movement felt after week 20',
+      'Sudden swelling of face, hands, or feet',
+      'Severe headache or blurred vision',
+      'Vaginal bleeding of any amount',
+      'Pain or burning when urinating',
+    ],
+  },
+  {
+    title: 'Third Trimester (Weeks 28–40+)',
+    color: '#fce7f3',
+    border: '#f9a8d4',
+    accent: '#831843',
+    tips: [
+      'Increase ANC visit frequency — every two weeks after week 28, weekly from week 36.',
+      'Count baby kicks daily — at least 10 movements in 2 hours.',
+      'Prepare your delivery bag early (week 35–36).',
+      'Discuss your birth plan with your health worker.',
+      'Watch for signs of pre-eclampsia (headache, visual changes, upper-belly pain).',
+      'Arrange transport to the facility in advance.',
+    ],
+    danger: [
+      'Decreased or absent foetal movement',
+      'Severe or sudden headache',
+      'Blurred or double vision',
+      'Swelling of face and hands',
+      'Fluid gushing from vagina (ruptured membranes)',
+      'Contractions before 37 weeks',
+      'Heavy bleeding',
+    ],
+  },
 ]
 
-const DANGER_SIGNS = [
-  { sign:'Heavy vaginal bleeding',       level:'Emergency', color:'#dc2626' },
-  { sign:'Severe headache with vision changes', level:'Emergency', color:'#dc2626' },
-  { sign:'Baby not moving (after 20 wks)',      level:'Emergency', color:'#dc2626' },
-  { sign:'Cord prolapse',                level:'Emergency', color:'#dc2626' },
-  { sign:'Fits/seizures (eclampsia)',    level:'Emergency', color:'#dc2626' },
-  { sign:'Severe abdominal pain',        level:'Emergency', color:'#dc2626' },
-  { sign:'Difficulty breathing',         level:'Emergency', color:'#dc2626' },
-  { sign:'High fever (>38°C)',           level:'Urgent',    color:'#d97706' },
-  { sign:'Painful/burning urination',    level:'Urgent',    color:'#d97706' },
-  { sign:'Swollen face, hands, or feet', level:'Urgent',    color:'#d97706' },
-  { sign:'Reduced baby movements',       level:'Urgent',    color:'#d97706' },
-  { sign:'Water breaking before contractions', level:'Urgent', color:'#d97706' },
-]
-
-function PregnancyCoach({ patient }) {
-  const [openWeek, setOpenWeek] = useState(null)
-  const gestWeeks = patient?.gestational_age_weeks || null
-
-  const currentPhase = gestWeeks
-    ? WEEKS.find(w => gestWeeks >= w.range[0] && gestWeeks <= w.range[1]) || WEEKS[WEEKS.length - 1]
-    : null
+function PregnancyTab() {
+  const [open, setOpen] = useState(null)
 
   return (
-    <div className="space-y-5">
-      {/* Current week highlight */}
-      {currentPhase && (
-        <div className="card px-5 py-5 border-2 border-brand-200 bg-brand-50">
-          <div className="flex items-center gap-3 mb-3">
-            <span className="text-2xl">{currentPhase.icon}</span>
-            <div>
-              <p className="font-semibold text-brand-800">You are currently at week {gestWeeks}</p>
-              <p className="text-sm text-brand-600">{currentPhase.subtitle}</p>
-            </div>
-          </div>
-          <ul className="space-y-1.5">
-            {currentPhase.tips.map((t, i) => (
-              <li key={i} className="flex gap-2 text-sm text-slate-700">
-                <CheckCircle size={14} className="text-brand-500 mt-0.5 shrink-0"/>
-                {t}
-              </li>
-            ))}
-          </ul>
-          {currentPhase.warning && (
-            <div className="mt-3 flex gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-              <AlertTriangle size={14} className="text-red-500 mt-0.5 shrink-0"/>
-              <p className="text-xs text-red-700">{currentPhase.warning}</p>
+    <div>
+      <div style={{ ...card, background:'linear-gradient(135deg,#f0fdf4,#dcfce7)', border:'1px solid #86efac' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'8px' }}>
+          <Baby size={22} color="#166534" />
+          <h3 style={{ margin:0, color:'#166534', fontSize:'1rem', fontWeight:700 }}>Pregnancy Care Guide</h3>
+        </div>
+        <p style={{ margin:0, fontSize:'0.875rem', color:'#14532d' }}>
+          Follow the care tips for each trimester and know when to seek urgent help.
+          If you experience any danger signs, go to your nearest health facility or use the Transport tab to request a ride.
+        </p>
+      </div>
+
+      {TRIMESTERS.map((t, i) => (
+        <div key={i} style={{ ...card, border:`1.5px solid ${t.border}`, padding:'0' }}>
+          <button
+            onClick={() => setOpen(open === i ? null : i)}
+            style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'1rem 1.25rem', background:t.color, border:'none', borderRadius:'12px', cursor:'pointer', borderBottomLeftRadius: open===i?0:12, borderBottomRightRadius: open===i?0:12 }}>
+            <span style={{ fontWeight:700, color:t.accent, fontSize:'0.925rem' }}>{t.title}</span>
+            {open === i ? <ChevronUp size={18} color={t.accent} /> : <ChevronDown size={18} color={t.accent} />}
+          </button>
+
+          {open === i && (
+            <div style={{ padding:'1rem 1.25rem 1.25rem' }}>
+              <p style={{ fontWeight:600, fontSize:'0.85rem', color:'#374151', marginBottom:'8px' }}>Care Tips</p>
+              <ul style={{ margin:'0 0 1rem', paddingLeft:'1.25rem', display:'flex', flexDirection:'column', gap:'6px' }}>
+                {t.tips.map((tip, j) => (
+                  <li key={j} style={{ fontSize:'0.875rem', color:'#374151' }}>{tip}</li>
+                ))}
+              </ul>
+
+              <div style={{ background:'#fff4f2', border:'1px solid #fca5a5', borderRadius:'10px', padding:'0.875rem 1rem' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'6px' }}>
+                  <AlertTriangle size={15} color="#dc2626" />
+                  <span style={{ fontWeight:700, fontSize:'0.85rem', color:'#dc2626' }}>Danger Signs — Seek Help Immediately</span>
+                </div>
+                <ul style={{ margin:0, paddingLeft:'1.25rem', display:'flex', flexDirection:'column', gap:'4px' }}>
+                  {t.danger.map((d, j) => (
+                    <li key={j} style={{ fontSize:'0.85rem', color:'#7f1d1d' }}>{d}</li>
+                  ))}
+                </ul>
+              </div>
             </div>
           )}
         </div>
-      )}
-
-      {/* All phases accordion */}
-      <div>
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">All pregnancy stages</p>
-        <div className="space-y-2">
-          {WEEKS.map((w, i) => (
-            <div key={i} className="card overflow-hidden">
-              <button
-                onClick={() => setOpenWeek(openWeek === i ? null : i)}
-                className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-slate-50 transition-colors"
-              >
-                <span className="text-xl">{w.icon}</span>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-slate-800">{w.title}</p>
-                  <p className="text-xs text-slate-400">{w.subtitle}</p>
-                </div>
-                {openWeek === i ? <ChevronDown size={16} className="text-slate-400"/> : <ChevronRight size={16} className="text-slate-400"/>}
-              </button>
-              {openWeek === i && (
-                <div className="px-5 pb-4 space-y-2 border-t border-slate-50">
-                  {w.tips.map((t, j) => (
-                    <div key={j} className="flex gap-2 text-sm text-slate-700 pt-2">
-                      <CheckCircle size={13} className="text-brand-500 mt-0.5 shrink-0"/>
-                      {t}
-                    </div>
-                  ))}
-                  {w.warning && (
-                    <div className="flex gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mt-2">
-                      <AlertTriangle size={13} className="text-red-500 mt-0.5 shrink-0"/>
-                      <p className="text-xs text-red-700">{w.warning}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Danger signs reference */}
-      <div>
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Danger sign reference</p>
-        <div className="card divide-y divide-slate-50">
-          {DANGER_SIGNS.map((d, i) => (
-            <div key={i} className="flex items-center justify-between px-5 py-3">
-              <p className="text-sm text-slate-700">{d.sign}</p>
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: d.level === 'Emergency' ? '#fef2f2' : '#fffbeb', color: d.color }}>
-                {d.level}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
+      ))}
     </div>
   )
 }
 
-// ── Service Reviews ───────────────────────────────────────────────────────────
-function ServiceReviews({ patientId }) {
-  const [reviews, setReviews]   = useState([])
-  const [loading, setLoading]   = useState(true)
-  const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ facility_name:'', visit_type:'antenatal', rating:5, comment:'' })
-  const [saving, setSaving]     = useState(false)
-  const [error, setError]       = useState('')
-  const [success, setSuccess]   = useState(false)
+// ── 2. Service Reviews ────────────────────────────────────────────────────────
+const VISIT_TYPES = [
+  { value:'anc',       label:'Antenatal Care (ANC)' },
+  { value:'delivery',  label:'Delivery' },
+  { value:'postnatal', label:'Postnatal Visit' },
+  { value:'emergency', label:'Emergency Visit' },
+  { value:'transport', label:'Transport Service' },
+  { value:'other',     label:'Other' },
+]
 
-  useEffect(() => {
-    // Load reviews from localStorage (client-side storage for portal)
-    const stored = JSON.parse(localStorage.getItem(`reviews_${patientId}`) || '[]')
-    setReviews(stored)
-    setLoading(false)
-  }, [patientId])
+function StarPicker({ value, onChange }) {
+  const [hovered, setHovered] = useState(0)
+  return (
+    <div style={{ display:'flex', gap:'4px' }}>
+      {[1,2,3,4,5].map(n => (
+        <button key={n} type="button"
+          onMouseEnter={() => setHovered(n)} onMouseLeave={() => setHovered(0)}
+          onClick={() => onChange(n)}
+          style={{ background:'none', border:'none', cursor:'pointer', padding:'2px', fontSize:'1.5rem', color: n<=(hovered||value)?'#f59e0b':'#e2e8f0' }}>
+          ★
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function ReviewsTab() {
+  const [reviews, setReviews] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [success, setSuccess] = useState(false)
+  const [form, setForm] = useState({ visit_type:'anc', period:'pre_labour', facility_name:'', rating:0, comments:'' })
+  const [error, setError] = useState('')
+
+  const load = () => {
+    setLoading(true)
+    patientApi.reviews.list()
+      .then(({ data }) => setReviews(data))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [])
+
+  const set = key => e => setForm(p => ({ ...p, [key]: e.target.value }))
 
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!form.facility_name.trim() || !form.comment.trim()) { setError('Please fill in all fields.'); return }
-    setSaving(true); setError('')
-    const newReview = { ...form, id: Date.now(), created_at: new Date().toISOString() }
-    const updated = [newReview, ...reviews]
-    localStorage.setItem(`reviews_${patientId}`, JSON.stringify(updated))
-    setReviews(updated)
-    setForm({ facility_name:'', visit_type:'antenatal', rating:5, comment:'' })
-    setShowForm(false)
-    setSuccess(true)
-    setTimeout(() => setSuccess(false), 3000)
-    setSaving(false)
+    e.preventDefault(); setError('')
+    if (!form.rating) { setError('Please select a star rating.'); return }
+    setSubmitting(true)
+    try {
+      await patientApi.reviews.create(form)
+      setSuccess(true); setShowForm(false)
+      setForm({ visit_type:'anc', period:'pre_labour', facility_name:'', rating:0, comments:'' })
+      load()
+      setTimeout(() => setSuccess(false), 3000)
+    } catch (err) {
+      const d = err?.response?.data
+      setError(d ? (Object.values(d)[0] || 'Failed to submit review.') : 'Failed to submit review.')
+    } finally { setSubmitting(false) }
   }
 
-  const VISIT_TYPES = [
-    { value:'antenatal', label:'Antenatal Care (ANC)' },
-    { value:'delivery',  label:'Delivery / Labour' },
-    { value:'postnatal', label:'Postnatal Care' },
-    { value:'emergency', label:'Emergency Visit' },
-    { value:'other',     label:'Other' },
-  ]
+  const periodLabel = p => p === 'pre_labour' ? 'Pre-Labour' : 'Post-Labour'
+  const visitLabel  = v => VISIT_TYPES.find(t => t.value === v)?.label || v
 
   return (
-    <div className="space-y-4">
-      {success && <Alert type="success" message="Thank you for your feedback!"/>}
-      {!showForm ? (
-        <button onClick={() => setShowForm(true)} className="btn-primary w-full justify-center">
-          <Star size={15}/> Rate a Service
+    <div>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'1rem' }}>
+        <h3 style={{ margin:0, fontSize:'1rem', fontWeight:700, color:'#0f172a' }}>Service Ratings & Reviews</h3>
+        <button onClick={() => setShowForm(v => !v)} style={btn('#207652')}>
+          <Plus size={15} />{showForm ? 'Cancel' : 'Add Review'}
         </button>
-      ) : (
-        <div className="card px-5 py-5">
-          <p className="text-sm font-semibold text-slate-700 mb-4">Share your experience</p>
-          {error && <Alert type="error" message={error} className="mb-3"/>}
-          <div className="space-y-3">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Facility Name <span className="text-red-500">*</span></label>
-              <input className="input-field" value={form.facility_name} onChange={e => setForm(f=>({...f,facility_name:e.target.value}))} placeholder="e.g. Komfo Anokye Teaching Hospital"/>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Type of Visit</label>
-              <select className="input-field" value={form.visit_type} onChange={e => setForm(f=>({...f,visit_type:e.target.value}))}>
-                {VISIT_TYPES.map(v => <option key={v.value} value={v.value}>{v.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Rating</label>
-              <div className="flex gap-1">
-                {[1,2,3,4,5].map(n => (
-                  <button key={n} type="button" onClick={() => setForm(f=>({...f,rating:n}))}>
-                    <Star size={28} className={n <= form.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-200'}/>
-                  </button>
-                ))}
-                <span className="text-sm text-slate-500 ml-2 self-center">{form.rating}/5</span>
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Your Experience <span className="text-red-500">*</span></label>
-              <textarea rows={3} className="input-field resize-none" value={form.comment} onChange={e => setForm(f=>({...f,comment:e.target.value}))} placeholder="How was the care you received? Was the staff helpful? Were you treated with dignity?"/>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => setShowForm(false)} className="btn-secondary flex-1 justify-center">Cancel</button>
-              <button onClick={handleSubmit} disabled={saving} className="btn-primary flex-1 justify-center">
-                {saving ? <Spinner size={14} className="text-white"/> : <><Send size={14}/> Submit</>}
-              </button>
-            </div>
-          </div>
+      </div>
+
+      {success && (
+        <div style={{ ...card, background:'#f0fdf4', border:'1px solid #86efac', display:'flex', alignItems:'center', gap:'8px', color:'#166534' }}>
+          <CheckCircle size={18} /> Review submitted successfully!
         </div>
       )}
 
-      {loading ? <PageSpinner/> : reviews.length === 0 ? (
-        <div className="card px-5 py-10 text-center">
-          <Star size={28} className="text-slate-200 mx-auto mb-2"/>
-          <p className="text-sm text-slate-400">No reviews yet. Share your experience to help improve care.</p>
+      {showForm && (
+        <div style={card}>
+          <h4 style={{ margin:'0 0 1rem', fontSize:'0.95rem', fontWeight:600, color:'#0f172a' }}>Submit a Review</h4>
+          {error && <div style={{ background:'#fff4f2', border:'1px solid #fca5a5', borderRadius:'8px', padding:'0.75rem', color:'#c02812', fontSize:'0.875rem', marginBottom:'1rem' }}>{error}</div>}
+          <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', gap:'0.875rem' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+              <div>
+                <label style={label}>Visit Type</label>
+                <select value={form.visit_type} onChange={set('visit_type')} style={input}>
+                  {VISIT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={label}>Period</label>
+                <select value={form.period} onChange={set('period')} style={input}>
+                  <option value="pre_labour">Pre-Labour</option>
+                  <option value="post_labour">Post-Labour</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label style={label}>Facility Name <span style={{ color:'#94a3b8', fontWeight:400 }}>(optional)</span></label>
+              <input value={form.facility_name} onChange={set('facility_name')} placeholder="e.g. Tamale Teaching Hospital" style={input} />
+            </div>
+            <div>
+              <label style={label}>Rating <span style={{ color:'#e43418' }}>*</span></label>
+              <StarPicker value={form.rating} onChange={r => setForm(p => ({ ...p, rating: r }))} />
+            </div>
+            <div>
+              <label style={label}>Comments <span style={{ color:'#94a3b8', fontWeight:400 }}>(optional)</span></label>
+              <textarea value={form.comments} onChange={set('comments')} rows={3} placeholder="Tell us about your experience…" style={{ ...input, resize:'vertical' }} />
+            </div>
+            <button type="submit" disabled={submitting} style={{ ...btn(), justifyContent:'center' }}>
+              <Send size={15} />{submitting ? 'Submitting…' : 'Submit Review'}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ textAlign:'center', padding:'2rem', color:'#94a3b8', fontSize:'0.875rem' }}>Loading reviews…</div>
+      ) : reviews.length === 0 ? (
+        <div style={{ ...card, textAlign:'center', color:'#94a3b8', padding:'2.5rem' }}>
+          <Star size={32} style={{ marginBottom:'0.5rem', opacity:0.4 }} />
+          <p style={{ margin:0, fontSize:'0.875rem' }}>No reviews yet. Share your experience!</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {reviews.map(r => (
-            <div key={r.id} className="card px-5 py-4">
-              <div className="flex items-start justify-between gap-3 mb-2">
-                <div>
-                  <p className="text-sm font-semibold text-slate-800">{r.facility_name}</p>
-                  <p className="text-xs text-slate-400">{VISIT_TYPES.find(v=>v.value===r.visit_type)?.label || r.visit_type} · {new Date(r.created_at).toLocaleDateString()}</p>
-                </div>
-                <div className="flex gap-0.5 shrink-0">
-                  {[1,2,3,4,5].map(n => <Star key={n} size={14} className={n <= r.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-200'}/>)}
-                </div>
+        reviews.map(r => (
+          <div key={r.id} style={card}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'6px' }}>
+              <div>
+                <span style={{ fontWeight:600, fontSize:'0.875rem', color:'#0f172a' }}>{visitLabel(r.visit_type)}</span>
+                <span style={{ marginLeft:'8px', fontSize:'0.75rem', background:r.period==='pre_labour'?'#dbeafe':'#fce7f3', color:r.period==='pre_labour'?'#1e40af':'#831843', borderRadius:'999px', padding:'2px 8px', fontWeight:500 }}>{periodLabel(r.period)}</span>
               </div>
-              <p className="text-sm text-slate-600 leading-relaxed">{r.comment}</p>
+              <span style={{ fontSize:'0.75rem', color:'#94a3b8' }}>{new Date(r.created_at).toLocaleDateString()}</span>
             </div>
-          ))}
-        </div>
+            <div style={{ fontSize:'1.1rem', color:'#f59e0b', letterSpacing:'2px', marginBottom:'4px' }}>{'★'.repeat(r.rating)}{'☆'.repeat(5-r.rating)}</div>
+            {r.facility_name && <p style={{ margin:'0 0 4px', fontSize:'0.8rem', color:'#64748b' }}>📍 {r.facility_name}</p>}
+            {r.comments && <p style={{ margin:0, fontSize:'0.875rem', color:'#374151' }}>{r.comments}</p>}
+          </div>
+        ))
       )}
     </div>
   )
 }
 
-// ── On-Call / Home Request ────────────────────────────────────────────────────
-function HomeServiceRequest({ patient }) {
-  const [form, setForm]     = useState({ request_type:'home_visit', description:'', location:'', preferred_time:'' })
-  const [requests, setReqs] = useState([])
-  const [saving, setSaving] = useState(false)
-  const [error, setError]   = useState('')
-  const [success, setSuccess] = useState(false)
+// ── 3. On-Call / Home Service Request ────────────────────────────────────────
+const SERVICE_TYPES = [
+  { value:'home_visit',     label:'🏠 Home Visit',            desc:'A health worker visits you at home.' },
+  { value:'phone_consult',  label:'📞 Phone Consultation',    desc:'Speak to a health worker by phone.' },
+  { value:'follow_up',      label:'📋 Follow-Up Check',       desc:'Post-discharge or postnatal follow-up.' },
+]
 
-  const patientId = patient?.id
-  useEffect(() => {
-    if (!patientId) return
-    const stored = JSON.parse(localStorage.getItem(`home_requests_${patientId}`) || '[]')
-    setReqs(stored)
-  }, [patientId])
+function OnCallTab() {
+  const [form, setForm] = useState({ type:'home_visit', description:'', location:'', preferred_time:'' })
+  const [submitting, setSubmitting] = useState(false)
+  const [submitted,  setSubmitted]  = useState(false)
+  const [error, setError] = useState('')
 
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    if (!form.description.trim() || !form.location.trim()) { setError('Please describe your concern and provide your location.'); return }
-    setSaving(true); setError('')
-    const newReq = { ...form, id: Date.now(), status:'pending', created_at: new Date().toISOString() }
-    const updated = [newReq, ...requests]
-    localStorage.setItem(`home_requests_${patientId}`, JSON.stringify(updated))
-    setReqs(updated)
-    setForm({ request_type:'home_visit', description:'', location:'', preferred_time:'' })
-    setSuccess(true)
-    setTimeout(() => setSuccess(false), 4000)
-    setSaving(false)
+  const set = key => e => setForm(p => ({ ...p, [key]: e.target.value }))
+
+  const handleSubmit = async (e) => {
+    e.preventDefault(); setError('')
+    if (!form.description.trim()) { setError('Please describe your request.'); return }
+    setSubmitting(true)
+    try {
+      // On-call requests go in as transport notes with no vehicle assigned (pending dispatch)
+      await transportApi.requests.create({
+        notes: `[ON-CALL / ${form.type.toUpperCase()}]\nDescription: ${form.description}\nLocation: ${form.location || 'Not specified'}\nPreferred time: ${form.preferred_time || 'As soon as possible'}`,
+        status: 'pending',
+      })
+      setSubmitted(true)
+      setForm({ type:'home_visit', description:'', location:'', preferred_time:'' })
+    } catch {
+      setError('Could not submit request. Please try again.')
+    } finally { setSubmitting(false) }
   }
 
-  const REQUEST_TYPES = [
-    { value:'home_visit',    label:'Home Visit',          desc:'A health worker comes to you', icon:'🏠' },
-    { value:'on_call',       label:'On-Call Consultation', desc:'Speak with a health worker by phone', icon:'📞' },
-    { value:'transport',     label:'Transport Request',    desc:'Request a vehicle to the facility', icon:'🚑' },
-    { value:'follow_up',     label:'Follow-up Check',      desc:'Post-discharge check-in at home', icon:'💊' },
-  ]
-
-  const STATUS_COLORS = { pending:'bg-amber-100 text-amber-700', confirmed:'bg-brand-100 text-brand-700', completed:'bg-emerald-100 text-emerald-700', cancelled:'bg-slate-100 text-slate-500' }
-
   return (
-    <div className="space-y-5">
-      {success && <Alert type="success" message="Request submitted. A health worker will contact you shortly."/>}
-      {error   && <Alert type="error"   message={error}/>}
+    <div>
+      {/* Emergency strip */}
+      <div style={{ background:'#fef2f2', border:'1px solid #fca5a5', borderRadius:'12px', padding:'1rem 1.25rem', marginBottom:'1rem', display:'flex', alignItems:'center', gap:'10px' }}>
+        <Phone size={20} color="#dc2626" />
+        <div>
+          <p style={{ margin:0, fontWeight:700, fontSize:'0.875rem', color:'#dc2626' }}>Emergency? Call Now</p>
+          <p style={{ margin:0, fontSize:'0.8rem', color:'#991b1b' }}>Ghana Emergency: <strong>112</strong> &nbsp;|&nbsp; Ambulance: <strong>193</strong></p>
+        </div>
+      </div>
 
-      <div className="card px-5 py-5">
-        <p className="text-sm font-semibold text-slate-700 mb-1">Request home or on-call care</p>
-        <p className="text-xs text-slate-400 mb-4">For when you cannot travel to a facility or need urgent advice</p>
+      <div style={card}>
+        <h3 style={{ margin:'0 0 0.25rem', fontSize:'1rem', fontWeight:700, color:'#0f172a' }}>Request a Home Service</h3>
+        <p style={{ margin:'0 0 1.25rem', fontSize:'0.85rem', color:'#64748b' }}>Can't make it to the facility? Request a service at home.</p>
 
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          {REQUEST_TYPES.map(t => (
-            <button key={t.value} type="button"
-              onClick={() => setForm(f=>({...f,request_type:t.value}))}
-              className={`p-3 rounded-xl border-2 text-left transition-all ${form.request_type === t.value ? 'border-brand-500 bg-brand-50' : 'border-slate-100 hover:border-brand-200'}`}
-            >
-              <span className="text-lg">{t.icon}</span>
-              <p className="text-xs font-semibold text-slate-800 mt-1">{t.label}</p>
-              <p className="text-[10px] text-slate-400">{t.desc}</p>
+        {submitted && (
+          <div style={{ background:'#f0fdf4', border:'1px solid #86efac', borderRadius:'8px', padding:'0.875rem', display:'flex', alignItems:'center', gap:'8px', color:'#166534', marginBottom:'1rem', fontSize:'0.875rem' }}>
+            <CheckCircle size={17} /> Request submitted! A health worker will follow up shortly.
+          </div>
+        )}
+        {error && <div style={{ background:'#fff4f2', border:'1px solid #fca5a5', borderRadius:'8px', padding:'0.75rem', color:'#c02812', fontSize:'0.875rem', marginBottom:'1rem' }}>{error}</div>}
+
+        {/* Service type cards */}
+        <div style={{ display:'flex', flexDirection:'column', gap:'8px', marginBottom:'1rem' }}>
+          {SERVICE_TYPES.map(s => (
+            <button key={s.value} type="button"
+              onClick={() => setForm(p => ({ ...p, type: s.value }))}
+              style={{ display:'flex', alignItems:'center', gap:'12px', padding:'12px 14px', border:`2px solid ${form.type===s.value?'#2f9466':'#e2e8f0'}`, borderRadius:'10px', background:form.type===s.value?'#f0fdf4':'white', cursor:'pointer', textAlign:'left' }}>
+              <div style={{ flex:1 }}>
+                <div style={{ fontWeight:600, fontSize:'0.875rem', color:form.type===s.value?'#166534':'#0f172a' }}>{s.label}</div>
+                <div style={{ fontSize:'0.78rem', color:'#64748b', marginTop:'2px' }}>{s.desc}</div>
+              </div>
+              {form.type===s.value && <CheckCircle size={17} color="#207652" />}
             </button>
           ))}
         </div>
 
-        <div className="space-y-3">
+        <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', gap:'0.875rem' }}>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Describe your concern <span className="text-red-500">*</span></label>
-            <textarea rows={3} className="input-field resize-none" value={form.description} onChange={e => setForm(f=>({...f,description:e.target.value}))} placeholder="What is your symptom or concern? e.g. severe headache, reduced baby movements, difficulty breathing…"/>
+            <label style={label}>Describe your situation <span style={{ color:'#e43418' }}>*</span></label>
+            <textarea required value={form.description} onChange={set('description')} rows={3}
+              placeholder="e.g. I am 36 weeks pregnant and having severe headaches. I cannot travel."
+              style={{ ...input, resize:'vertical' }} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1"><MapPin size={13}/> Location / Address <span className="text-red-500">*</span></label>
-            <input className="input-field" value={form.location} onChange={e => setForm(f=>({...f,location:e.target.value}))} placeholder="Your home address or landmark"/>
+            <label style={label}>Your location / address <span style={{ color:'#94a3b8', fontWeight:400 }}>(optional)</span></label>
+            <div style={{ position:'relative' }}>
+              <MapPin size={15} style={{ position:'absolute', left:'10px', top:'50%', transform:'translateY(-50%)', color:'#94a3b8' }} />
+              <input value={form.location} onChange={set('location')} placeholder="e.g. Tamale, Choggu area, near the mosque" style={{ ...input, paddingLeft:'32px' }} />
+            </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1"><Calendar size={13}/> Preferred time (optional)</label>
-            <input type="datetime-local" className="input-field" value={form.preferred_time} onChange={e => setForm(f=>({...f,preferred_time:e.target.value}))}/>
+            <label style={label}>Preferred time <span style={{ color:'#94a3b8', fontWeight:400 }}>(optional)</span></label>
+            <div style={{ position:'relative' }}>
+              <Calendar size={15} style={{ position:'absolute', left:'10px', top:'50%', transform:'translateY(-50%)', color:'#94a3b8' }} />
+              <input type="datetime-local" value={form.preferred_time} onChange={set('preferred_time')} style={{ ...input, paddingLeft:'32px' }} />
+            </div>
           </div>
-          <button onClick={handleSubmit} disabled={saving} className="btn-primary w-full justify-center">
-            {saving ? <Spinner size={14} className="text-white"/> : <><Send size={14}/> Submit Request</>}
+          <button type="submit" disabled={submitting} style={{ ...btn(), justifyContent:'center' }}>
+            <Send size={15} />{submitting ? 'Submitting…' : 'Submit Request'}
           </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── 4. Transport Request ──────────────────────────────────────────────────────
+const EMERGENCY_TYPES = [
+  'Labour / Active contractions',
+  'Heavy bleeding',
+  'Difficulty breathing',
+  'Severe headache or blurred vision',
+  'Baby not moving',
+  'Other emergency',
+]
+
+function TransportTab() {
+  const [vehicles,   setVehicles]   = useState([])
+  const [myRequests, setMyRequests] = useState([])
+  const [loading,    setLoading]    = useState(true)
+  const [form, setForm] = useState({ vehicle:'', emergency_type:'Labour / Active contractions', notes:'', pickup_address:'' })
+  const [submitting, setSubmitting] = useState(false)
+  const [success,    setSuccess]    = useState(false)
+  const [error,      setError]      = useState('')
+
+  const load = () => {
+    setLoading(true)
+    Promise.all([
+      transportApi.vehicles.available().then(({ data }) => setVehicles(data)).catch(() => {}),
+      transportApi.requests.mine().then(({ data }) => setMyRequests(Array.isArray(data) ? data : (data.results || []))).catch(() => {}),
+    ]).finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [])
+
+  const set = key => e => setForm(p => ({ ...p, [key]: e.target.value }))
+
+  const handleSubmit = async (e) => {
+    e.preventDefault(); setError('')
+    setSubmitting(true)
+    try {
+      const payload = {
+        notes: `[PATIENT EMERGENCY TRANSPORT]\nType: ${form.emergency_type}\nPickup: ${form.pickup_address || 'Not specified'}\nNotes: ${form.notes}`,
+        status: 'pending',
+        ...(form.vehicle && { vehicle: form.vehicle }),
+      }
+      await transportApi.requests.create(payload)
+      setSuccess(true); setForm({ vehicle:'', emergency_type:'Labour / Active contractions', notes:'', pickup_address:'' })
+      load()
+      setTimeout(() => setSuccess(false), 4000)
+    } catch { setError('Could not submit transport request. Please try again or call 193.') }
+    finally { setSubmitting(false) }
+  }
+
+  const statusColor = s => ({ pending:'#f59e0b', assigned:'#3b82f6', completed:'#22c55e', cancelled:'#ef4444' }[s] || '#94a3b8')
+
+  return (
+    <div>
+      {/* Emergency strip */}
+      <div style={{ background:'#fef2f2', border:'1px solid #fca5a5', borderRadius:'12px', padding:'1rem 1.25rem', marginBottom:'1rem' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'4px' }}>
+          <AlertTriangle size={18} color="#dc2626" />
+          <span style={{ fontWeight:700, fontSize:'0.875rem', color:'#dc2626' }}>Life-threatening emergency?</span>
         </div>
+        <p style={{ margin:0, fontSize:'0.8rem', color:'#7f1d1d' }}>
+          Call Ghana Ambulance: <strong>193</strong> or National Emergency: <strong>112</strong> immediately.
+          Use this form for urgent-but-stable transport requests.
+        </p>
       </div>
 
-      {/* Emergency contact strip */}
-      <div className="card px-5 py-4 bg-red-50 border-red-200">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center shrink-0">
-            <Phone size={18} className="text-red-600"/>
+      {/* Request form */}
+      <div style={card}>
+        <h3 style={{ margin:'0 0 0.25rem', fontSize:'1rem', fontWeight:700, color:'#0f172a' }}>Request Emergency Transport</h3>
+        <p style={{ margin:'0 0 1.25rem', fontSize:'0.85rem', color:'#64748b' }}>Can't get to the hospital? Request a vehicle to your location.</p>
+
+        {success && (
+          <div style={{ background:'#f0fdf4', border:'1px solid #86efac', borderRadius:'8px', padding:'0.875rem', display:'flex', alignItems:'center', gap:'8px', color:'#166534', marginBottom:'1rem', fontSize:'0.875rem' }}>
+            <CheckCircle size={17} /> Transport requested! A driver will be assigned shortly.
+          </div>
+        )}
+        {error && <div style={{ background:'#fff4f2', border:'1px solid #fca5a5', borderRadius:'8px', padding:'0.75rem', color:'#c02812', fontSize:'0.875rem', marginBottom:'1rem' }}>{error}</div>}
+
+        <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', gap:'0.875rem' }}>
+          <div>
+            <label style={label}>Emergency type <span style={{ color:'#e43418' }}>*</span></label>
+            <select required value={form.emergency_type} onChange={set('emergency_type')} style={input}>
+              {EMERGENCY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
           </div>
           <div>
-            <p className="text-sm font-semibold text-red-800">Emergency? Call immediately</p>
-            <p className="text-xs text-red-600 mt-0.5">For life-threatening emergencies, do not wait — call your nearest facility or emergency line</p>
+            <label style={label}>Your pickup address <span style={{ color:'#e43418' }}>*</span></label>
+            <div style={{ position:'relative' }}>
+              <MapPin size={15} style={{ position:'absolute', left:'10px', top:'50%', transform:'translateY(-50%)', color:'#94a3b8' }} />
+              <input required value={form.pickup_address} onChange={set('pickup_address')} placeholder="e.g. Tamale, Choggu Yapala, near water tank" style={{ ...input, paddingLeft:'32px' }} />
+            </div>
           </div>
-        </div>
+
+          {/* Available vehicles */}
+          {!loading && vehicles.length > 0 && (
+            <div>
+              <label style={label}>Preferred vehicle <span style={{ color:'#94a3b8', fontWeight:400 }}>(optional — system will assign if none selected)</span></label>
+              <select value={form.vehicle} onChange={set('vehicle')} style={input}>
+                <option value="">— Let system assign —</option>
+                {vehicles.map(v => (
+                  <option key={v.id} value={v.id}>{v.vehicle_type} · {v.registration}{v.driver_name ? ` · ${v.driver_name}` : ''}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label style={label}>Additional notes <span style={{ color:'#94a3b8', fontWeight:400 }}>(optional)</span></label>
+            <textarea value={form.notes} onChange={set('notes')} rows={2}
+              placeholder="e.g. I am alone, gate is blue, call on arrival"
+              style={{ ...input, resize:'vertical' }} />
+          </div>
+
+          <button type="submit" disabled={submitting}
+            style={{ ...btn('#dc2626'), justifyContent:'center', padding:'12px' }}>
+            <Truck size={16} />{submitting ? 'Sending request…' : 'Request Transport Now'}
+          </button>
+        </form>
       </div>
 
-      {/* Past requests */}
-      {requests.length > 0 && (
-        <div>
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Your requests</p>
-          <div className="space-y-2">
-            {requests.map(r => (
-              <div key={r.id} className="card px-4 py-3 flex items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-800">{REQUEST_TYPES.find(t=>t.value===r.request_type)?.label}</p>
-                  <p className="text-xs text-slate-400 truncate">{r.description}</p>
-                  <p className="text-xs text-slate-400">{new Date(r.created_at).toLocaleDateString()}</p>
-                </div>
-                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_COLORS[r.status]}`}>{r.status}</span>
-              </div>
-            ))}
-          </div>
+      {/* My requests */}
+      <h4 style={{ margin:'1.25rem 0 0.75rem', fontSize:'0.9rem', fontWeight:700, color:'#374151', display:'flex', alignItems:'center', gap:'6px' }}>
+        <Clock size={15} /> My Transport Requests
+        <button onClick={load} style={{ marginLeft:'auto', background:'none', border:'none', cursor:'pointer', color:'#94a3b8' }}><RotateCcw size={14} /></button>
+      </h4>
+
+      {loading ? (
+        <div style={{ textAlign:'center', padding:'1.5rem', color:'#94a3b8', fontSize:'0.875rem' }}>Loading…</div>
+      ) : myRequests.length === 0 ? (
+        <div style={{ ...card, textAlign:'center', color:'#94a3b8', padding:'2rem' }}>
+          <Truck size={28} style={{ marginBottom:'0.5rem', opacity:0.35 }} />
+          <p style={{ margin:0, fontSize:'0.875rem' }}>No transport requests yet.</p>
         </div>
+      ) : (
+        myRequests.slice(0, 5).map(r => (
+          <div key={r.id} style={{ ...card, padding:'1rem 1.25rem' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'4px' }}>
+              <span style={{ fontSize:'0.8rem', fontWeight:600, color:'#0f172a' }}>
+                {r.vehicle_registration || 'Vehicle TBA'}
+              </span>
+              <span style={{ fontSize:'0.75rem', fontWeight:700, color: statusColor(r.status), textTransform:'capitalize' }}>
+                ● {r.status}
+              </span>
+            </div>
+            {r.notes && <p style={{ margin:0, fontSize:'0.78rem', color:'#64748b', whiteSpace:'pre-wrap' }}>{r.notes.split('\n')[0]}</p>}
+            <p style={{ margin:'4px 0 0', fontSize:'0.72rem', color:'#94a3b8' }}>{new Date(r.created_at).toLocaleString()}</p>
+          </div>
+        ))
       )}
     </div>
   )
 }
 
-// ── My Health Summary ─────────────────────────────────────────────────────────
-function MyHealthSummary({ patient }) {
-  if (!patient) return <PageSpinner/>
-  const p = patient
+// ── 5. My Health ──────────────────────────────────────────────────────────────
+function MyHealthTab() {
+  const { user } = useAuth()
+  const [profile, setProfile] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    patientApi.me()
+      .then(({ data }) => setProfile(data))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const info = profile || user
+
+  if (loading) return <div style={{ textAlign:'center', padding:'2rem', color:'#94a3b8', fontSize:'0.875rem' }}>Loading…</div>
+
   return (
-    <div className="space-y-4">
-      <div className="card px-5 py-4 space-y-3">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-brand-100 rounded-xl flex items-center justify-center">
-            <UserCircle size={24} className="text-brand-600"/>
+    <div>
+      {/* Profile card */}
+      <div style={{ ...card, background:'linear-gradient(135deg,#f0fdf4,#dcfce7)', border:'1px solid #86efac' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'14px', marginBottom:'1rem' }}>
+          <div style={{ width:'52px', height:'52px', borderRadius:'50%', background:'#207652', display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontWeight:700, fontSize:'1.2rem', flexShrink:0 }}>
+            {info?.name?.[0]?.toUpperCase() || 'P'}
           </div>
           <div>
-            <p className="font-semibold text-slate-800">{p.patient_name || 'Patient'}</p>
-            <p className="text-xs text-slate-400">Age {p.age} · {p.blood_group !== 'unknown' ? p.blood_group : 'Blood group unknown'}</p>
+            <p style={{ margin:0, fontWeight:700, fontSize:'1rem', color:'#166534' }}>{info?.name}</p>
+            <p style={{ margin:0, fontSize:'0.8rem', color:'#15803d' }}>Patient Account</p>
+            {info?.is_verified && (
+              <span style={{ display:'inline-flex', alignItems:'center', gap:'4px', fontSize:'0.72rem', background:'#dcfce7', color:'#166534', padding:'2px 8px', borderRadius:'999px', fontWeight:600, marginTop:'2px' }}>
+                <CheckCircle size={11} /> Verified
+              </span>
+            )}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2 pt-1">
+
+        <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
           {[
-            ['Hospital ID',    p.hospital_id || '—'],
-            ['Town',           p.town        || '—'],
-            ['Gravida',        p.gravida     ?? '—'],
-            ['Parity',         p.parity      ?? '—'],
-            ['ANC Visits',     p.anc_visits],
-            ['Expected Delivery', p.expected_delivery_date ? new Date(p.expected_delivery_date).toLocaleDateString() : '—'],
-          ].map(([k, v]) => (
-            <div key={k} className="bg-slate-50 rounded-lg px-3 py-2">
-              <p className="text-[10px] text-slate-400 uppercase tracking-wide">{k}</p>
-              <p className="text-sm font-semibold text-slate-700 mt-0.5">{v}</p>
+            { icon:<Mail size={14} />,    label:'Email',  value: info?.email },
+            { icon:<Phone size={14} />,   label:'Phone',  value: info?.phone_number || 'Not provided' },
+            { icon:<Shield size={14} />,  label:'Role',   value: 'Patient' },
+            { icon:<Calendar size={14} />,label:'Joined', value: info?.created_at ? new Date(info.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'}) : '—' },
+          ].map(({ icon, label: lbl, value }) => (
+            <div key={lbl} style={{ display:'flex', alignItems:'center', gap:'8px', fontSize:'0.875rem' }}>
+              <span style={{ color:'#64748b', flexShrink:0 }}>{icon}</span>
+              <span style={{ color:'#64748b', minWidth:'52px' }}>{lbl}:</span>
+              <span style={{ color:'#0f172a', fontWeight:500 }}>{value}</span>
             </div>
           ))}
         </div>
       </div>
 
-      {p.next_of_kin_name && (
-        <div className="card px-5 py-4">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Next of Kin</p>
-          <p className="text-sm font-medium text-slate-800">{p.next_of_kin_name}</p>
-          <p className="text-xs text-slate-500">{p.next_of_kin_relationship} · {p.next_of_kin_phone}</p>
+      {/* Privacy notice */}
+      <div style={{ ...card, background:'#f8fafc', border:'1px solid #e2e8f0' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'8px' }}>
+          <Shield size={16} color="#64748b" />
+          <span style={{ fontWeight:600, fontSize:'0.875rem', color:'#374151' }}>Your Data &amp; Privacy</span>
         </div>
-      )}
+        <p style={{ margin:0, fontSize:'0.82rem', color:'#64748b', lineHeight:'1.6' }}>
+          Your information is stored securely and used only to provide maternal care services.
+          It is never shared with third parties without your consent. For questions, contact your facility or the NeoMatCare team.
+        </p>
+      </div>
 
-      {p.risk_level && p.risk_level !== 'low' && (
-        <div className={`card px-5 py-4 border-2 ${p.risk_level === 'high' ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'}`}>
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle size={16} className={p.risk_level === 'high' ? 'text-red-600' : 'text-amber-600'}/>
-            <p className="text-sm font-semibold">{p.risk_level === 'high' ? 'High risk pregnancy' : 'Some risk factors noted'}</p>
-          </div>
-          {p.risk_flags?.length > 0 && (
-            <ul className="space-y-1">
-              {p.risk_flags.map((f, i) => <li key={i} className="text-xs text-slate-600">• {f}</li>)}
-            </ul>
-          )}
-          <p className="text-xs text-slate-500 mt-2">Attend all scheduled ANC visits and report any new symptoms to your health worker.</p>
-        </div>
-      )}
-
-      <div className="card px-5 py-4 bg-brand-50 border-brand-200">
-        <div className="flex items-center gap-2 mb-2">
-          <ShieldCheck size={16} className="text-brand-600"/>
-          <p className="text-sm font-semibold text-brand-800">Your data is protected</p>
-        </div>
-        <p className="text-xs text-brand-700">Your health information is stored securely. Only health workers at your facility and the care team assigned to you can access your records.</p>
+      {/* Quick tips */}
+      <div style={card}>
+        <h4 style={{ margin:'0 0 0.75rem', fontSize:'0.9rem', fontWeight:700, color:'#0f172a' }}>Quick Reminders</h4>
+        {[
+          '📅 Attend all scheduled ANC visits.',
+          '💊 Take your supplements daily as prescribed.',
+          '🚨 Any danger sign → go to hospital or request transport immediately.',
+          '📞 Keep your phone charged and accessible.',
+          '👩‍⚕️ Contact your health worker if you have any concerns.',
+        ].map((tip, i) => (
+          <p key={i} style={{ margin:'0 0 6px', fontSize:'0.875rem', color:'#374151' }}>{tip}</p>
+        ))}
       </div>
     </div>
   )
 }
 
-// ── Patient Portal Dashboard ──────────────────────────────────────────────────
+// ── Root portal ───────────────────────────────────────────────────────────────
 const TABS = [
-  { id:'coach',   label:'Pregnancy Guide', icon: BookOpen },
-  { id:'reviews', label:'Rate a Service',  icon: Star },
-  { id:'request', label:'Home / On-Call',  icon: Phone },
-  { id:'summary', label:'My Health',       icon: Heart },
+  { id:'pregnancy', label:'Pregnancy Guide', icon: Baby        },
+  { id:'reviews',   label:'My Reviews',      icon: Star        },
+  { id:'oncall',    label:'On-Call',          icon: PhoneCall   },
+  { id:'transport', label:'Transport',        icon: Truck       },
+  { id:'health',    label:'My Health',        icon: HeartPulse  },
 ]
 
 export default function PatientPortalPage() {
   const { user } = useAuth()
-  const [tab,     setTab]     = useState('coach')
-  const [patient, setPatient] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [active, setActive] = useState('pregnancy')
 
-  useEffect(() => {
-    // Find the patient profile linked to this user
-    if (!user) return
-    patientsApi.list()
-      .then(({ data }) => {
-        const list = Array.isArray(data) ? data : data.results || []
-        // The patient portal user's profile is at /api/cases/patients/ filtered by their own link
-        // For portal users, the backend returns only their own record
-        if (list.length > 0) setPatient(list[0])
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [user])
+  const CurrentTab = {
+    pregnancy: PregnancyTab,
+    reviews:   ReviewsTab,
+    oncall:    OnCallTab,
+    transport: TransportTab,
+    health:    MyHealthTab,
+  }[active]
 
   return (
-    <div className="p-4 max-w-2xl mx-auto space-y-4 animate-fade-in">
+    <div style={{ maxWidth:'680px', margin:'0 auto', padding:'1.25rem 1rem 3rem' }}>
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 bg-brand-600 rounded-xl flex items-center justify-center text-white font-semibold">
-          {user?.name?.[0]?.toUpperCase() || 'P'}
-        </div>
-        <div>
-          <p className="font-semibold text-slate-800">Welcome, {user?.name?.split(' ')[0] || 'Patient'}</p>
-          <p className="text-xs text-slate-400">NeoMatCare Patient Portal</p>
-        </div>
+      <div style={{ marginBottom:'1.25rem' }}>
+        <h1 style={{ margin:0, fontFamily:'Georgia, serif', fontSize:'1.4rem', color:'#0f172a' }}>
+          Welcome, {user?.name?.split(' ')[0]} 👋
+        </h1>
+        <p style={{ margin:'4px 0 0', fontSize:'0.875rem', color:'#64748b' }}>Your personal maternity care portal</p>
       </div>
 
-      {/* Tab nav */}
-      <div className="grid grid-cols-4 gap-1 bg-slate-100 rounded-xl p-1">
-        {TABS.map(t => {
-          const Icon = t.icon
-          return (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`flex flex-col items-center gap-1 py-2.5 px-1 rounded-lg text-xs font-medium transition-all ${
-                tab === t.id ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              <Icon size={18}/>
-              <span className="leading-tight text-center">{t.label}</span>
-            </button>
-          )
-        })}
+      {/* Tab bar */}
+      <div style={{ display:'flex', gap:'6px', overflowX:'auto', paddingBottom:'4px', marginBottom:'1.25rem' }}>
+        {TABS.map(({ id, label, icon: Icon }) => (
+          <button key={id} onClick={() => setActive(id)}
+            style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'4px', padding:'9px 14px', border:'none', borderRadius:'10px', cursor:'pointer', whiteSpace:'nowrap', flexShrink:0,
+              background: active===id ? '#207652' : 'white',
+              color:       active===id ? 'white'   : '#64748b',
+              boxShadow:   active===id ? '0 2px 8px rgba(32,118,82,0.25)' : '0 1px 3px rgba(0,0,0,0.07)',
+              fontWeight:  active===id ? 600 : 400, fontSize:'0.78rem' }}>
+            <Icon size={17} />
+            {label}
+          </button>
+        ))}
       </div>
 
-      {/* Tab content */}
-      {loading ? <PageSpinner/> : (
-        <>
-          {tab === 'coach'   && <PregnancyCoach patient={patient}/>}
-          {tab === 'reviews' && <ServiceReviews patientId={patient?.id || user?.id}/>}
-          {tab === 'request' && <HomeServiceRequest patient={patient}/>}
-          {tab === 'summary' && <MyHealthSummary patient={patient}/>}
-        </>
-      )}
+      {/* Active tab */}
+      <CurrentTab />
     </div>
   )
 }

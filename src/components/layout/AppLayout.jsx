@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import {
   LayoutDashboard, ClipboardList, ArrowRightLeft, Truck,
   Video, Building2, Users, LogOut, Menu, X, Heart,
-  ChevronRight, Bell, UserCircle
+  ChevronRight, Bell, Baby, Star, PhoneCall, HeartPulse,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -32,13 +32,20 @@ const NAV_BY_ROLE = {
   ],
   superadmin: [
     { to: '/app/dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
-    { to: '/app/patients',       label: 'Patients',       icon: UserCircle },
     { to: '/app/cases',          label: 'All Cases',      icon: ClipboardList },
     { to: '/app/referrals',      label: 'All Referrals',  icon: ArrowRightLeft },
     { to: '/app/facilities',     label: 'Facilities',     icon: Building2 },
     { to: '/app/consultations',  label: 'Consultations',  icon: Video },
     { to: '/app/transport',      label: 'Transport',      icon: Truck },
     { to: '/app/users',          label: 'Users',          icon: Users },
+  ],
+  patient: [
+    { to: '/app/portal',                label: 'My Portal',         icon: Heart        },
+    { to: '/app/portal#pregnancy',      label: 'Pregnancy Guide',   icon: Baby         },
+    { to: '/app/portal#reviews',        label: 'My Reviews',        icon: Star         },
+    { to: '/app/portal#oncall',         label: 'On-Call',           icon: PhoneCall    },
+    { to: '/app/portal#transport',      label: 'Transport',         icon: Truck        },
+    { to: '/app/portal#health',         label: 'My Health',         icon: HeartPulse   },
   ],
 }
 
@@ -47,8 +54,8 @@ const ROLE_LABELS = {
   facility_admin: 'Facility Admin',
   specialist:     'Specialist',
   driver:         'Driver',
-  patient:         'Patient',
   superadmin:     'Superadmin',
+  patient:        'Patient',
 }
 
 const ROLE_COLORS = {
@@ -57,7 +64,7 @@ const ROLE_COLORS = {
   specialist:     'bg-purple-100 text-purple-700',
   driver:         'bg-amber-100 text-amber-700',
   superadmin:     'bg-danger-100 text-danger-700',
-  patient:        'bg-teal-100 text-teal-700',
+  patient:        'bg-green-100 text-green-800',
 }
 
 export default function AppLayout({ children }) {
@@ -65,7 +72,12 @@ export default function AppLayout({ children }) {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
 
-  const nav = NAV_BY_ROLE[role] || []
+  // For patient: portal tab links use hash anchors — match only the /app/portal prefix
+  const isPatient = role === 'patient'
+  const nav = (NAV_BY_ROLE[role] || []).filter((item, i) => {
+    // For patient, only show the first item (My Portal) in sidebar — rest are tab-level
+    return isPatient ? i === 0 : true
+  })
 
   const handleLogout = async () => {
     await logout()
@@ -95,7 +107,9 @@ export default function AppLayout({ children }) {
           </div>
           <div>
             <p className="font-display text-white text-base leading-tight">NeoMatCare</p>
-            <p className="text-slate-500 text-[10px] leading-tight">Emergency Referral System</p>
+            <p className="text-slate-500 text-[10px] leading-tight">
+              {isPatient ? 'Patient Portal' : 'Emergency Referral System'}
+            </p>
           </div>
           <button onClick={() => setOpen(false)} className="ml-auto lg:hidden text-slate-500 hover:text-white">
             <X size={18} />
@@ -108,7 +122,7 @@ export default function AppLayout({ children }) {
             <NavLink
               key={to}
               to={to}
-              end={to === '/app/dashboard'}
+              end={to === '/app/dashboard' || to === '/app/portal'}
               onClick={() => setOpen(false)}
               className={({ isActive }) => clsx(
                 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group',

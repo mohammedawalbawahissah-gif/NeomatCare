@@ -115,6 +115,32 @@ export const patientApi = {
   },
 }
 
+
+// ── Patients ──────────────────────────────────────────────────────────────────
+export const patientsApi = {
+  list:        (params)   => api.get('/api/cases/patients/', { params }),
+  create:      (data)     => api.post('/api/cases/patients/', data),
+  detail:      (id)       => api.get(`/api/cases/patients/${id}/`),
+  update:      (id, data) => api.patch(`/api/cases/patients/${id}/`, data),
+  delete:      (id)       => api.delete(`/api/cases/patients/${id}/`),
+  cases:       (id)       => api.get(`/api/cases/patients/${id}/cases/`),
+  computeRisk: (id)       => api.post(`/api/cases/patients/${id}/compute-risk/`),
+  ancVisits: {
+    list:   (patientId)                    => api.get(`/api/cases/patients/${patientId}/anc-visits/`),
+    create: (patientId, data)              => api.post(`/api/cases/patients/${patientId}/anc-visits/`, data),
+    update: (patientId, visitId, data)     => api.patch(`/api/cases/patients/${patientId}/anc-visits/${visitId}/`, data),
+    delete: (patientId, visitId)           => api.delete(`/api/cases/patients/${patientId}/anc-visits/${visitId}/`),
+  },
+  consent: {
+    list:   (patientId)        => api.get(`/api/cases/patients/${patientId}/consent/`),
+    record: (patientId, data)  => api.post(`/api/cases/patients/${patientId}/consent/`, data),
+  },
+  portal: {
+    grant:  (patientId, data)  => api.post(`/api/cases/patients/${patientId}/grant-portal/`, data),
+    revoke: (patientId)        => api.post(`/api/cases/patients/${patientId}/revoke-portal/`),
+  },
+}
+
 // ── Cases ─────────────────────────────────────────────────────────────────────
 export const casesApi = {
   list:              ()         => api.get('/api/cases/'),

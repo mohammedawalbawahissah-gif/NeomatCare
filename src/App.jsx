@@ -23,7 +23,9 @@ import UsersPage      from '@/pages/superadmin/UsersPage'
 
 import ProfilePage from '@/pages/ProfilePage'
 
-import PatientPortalPage from '@/pages/patients/PatientPortalPage'
+import PatientPortalPage  from '@/pages/patients/PatientPortalPage'
+import PatientsPage       from '@/pages/patients/PatientsPage'
+import PatientDetailPage  from '@/pages/patients/PatientDetailPage'
 
 import NotFoundPage from '@/pages/NotFoundPage'
 
@@ -81,6 +83,12 @@ export default function App() {
             {/* PATIENT PORTAL */}
             <Route element={<RequireRole allowed={['patient']} />}>
               <Route path="portal" element={<PatientPortalPage />} />
+            </Route>
+
+            {/* PATIENTS — health_worker, facility_admin, superadmin */}
+            <Route element={<RequireRole allowed={['health_worker','facility_admin','superadmin']} />}>
+              <Route path="patients"     element={<PatientsPage />} />
+              <Route path="patients/:id" element={<PatientDetailPage />} />
             </Route>
 
             {/* CASES — health_worker, facility_admin, superadmin */}

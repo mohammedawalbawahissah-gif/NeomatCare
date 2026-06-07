@@ -363,10 +363,102 @@ function ActionPicker({ caseData, onClose, navigate }) {
   )
 }
 
+// ── Patient Search Step ──────────────────────────────────────────────────────
+function PatientSearchStep({ onSelect, onSkip }) {
+  const [query,    setQuery]    = useState('')
+  const [results,  setResults]  = useState([])
+  const [loading,  setLoading]  = useState(false)
+  const [searched, setSearched] = useState(false)
+
+  const handleSearch = async (e) => {
+    e.preventDefault()
+    if (!query.trim()) return
+    setLoading(true); setSearched(true)
+    try {
+      const { data } = await patientsApi.list({ q: query.trim() })
+      setResults(Array.isArray(data) ? data : data.results || [])
+    } catch {
+      setResults([])
+    } finally { setLoading(false) }
+  }
+
+  const RISK_COLORS = {
+    high:   { background:'#fef2f2', color:'#dc2626', border:'#fecaca' },
+    medium: { background:'#fffbeb', color:'#d97706', border:'#fde68a' },
+    low:    { background:'#f0fdf4', color:'#16a34a', border:'#bbf7d0' },
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
+      <div style={{ background:'#f0faf5', border:'1px solid #bbf7d0', borderRadius:'10px', padding:'12px 16px' }}>
+        <p style={{ margin:0, fontSize:'0.875rem', fontWeight:600, color:'#15803d' }}>Search for an existing patient</p>
+        <p style={{ margin:0, fontSize:'0.75rem', color:'#166534', marginTop:'3px' }}>Linking an existing record prevents duplicates and preserves their full history</p>
+      </div>
+
+      <form onSubmit={handleSearch} style={{ display:'flex', gap:'8px' }}>
+        <input
+          value={query} onChange={e => setQuery(e.target.value)}
+          placeholder="Search by name, hospital ID, or phone number…"
+          style={{ ...inputStyle, flex:1 }}
+          autoFocus
+        />
+        <button type="submit" disabled={loading || !query.trim()}
+          style={{ padding:'10px 18px', background:(!query.trim() || loading)?'#7cb99a':'#207652', color:'white', border:'none', borderRadius:'8px', fontSize:'0.875rem', fontWeight:500, cursor:(!query.trim() || loading)?'not-allowed':'pointer', whiteSpace:'nowrap' }}>
+          {loading ? '…' : 'Search'}
+        </button>
+      </form>
+
+      {searched && results.length === 0 && !loading && (
+        <p style={{ textAlign:'center', fontSize:'0.875rem', color:'#94a3b8', padding:'16px 0' }}>No patients found. You can create a new patient below.</p>
+      )}
+
+      {results.length > 0 && (
+        <div style={{ display:'flex', flexDirection:'column', gap:'8px', maxHeight:'280px', overflowY:'auto' }}>
+          {results.map(p => {
+            const rc = RISK_COLORS[p.risk_level] || RISK_COLORS.low
+            return (
+              <button key={p.id} type="button" onClick={() => onSelect(p)}
+                style={{ textAlign:'left', padding:'12px 14px', borderRadius:'10px', border:'1px solid #e2e8f0', background:'white', cursor:'pointer', transition:'all 0.15s' }}
+                onMouseOver={e => e.currentTarget.style.borderColor='#207652'}
+                onMouseOut={e => e.currentTarget.style.borderColor='#e2e8f0'}
+              >
+                <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:'10px' }}>
+                  <div style={{ minWidth:0, flex:1 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap' }}>
+                      <p style={{ margin:0, fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{p.patient_name || 'Unnamed patient'}</p>
+                      <span style={{ fontSize:'0.7rem', padding:'2px 7px', borderRadius:'20px', fontWeight:600, background:rc.background, color:rc.color, border:`1px solid ${rc.border}` }}>
+                        {p.risk_level?.toUpperCase()} RISK
+                      </span>
+                    </div>
+                    <p style={{ margin:0, marginTop:'3px', fontSize:'0.75rem', color:'#64748b' }}>
+                      ID: {p.hospital_id || '—'} · Age {p.age} · {p.town || '—'} · {p.anc_visits} ANC visit{p.anc_visits !== 1 ? 's' : ''}
+                    </p>
+                    {p.case_count > 0 && (
+                      <p style={{ margin:0, marginTop:'2px', fontSize:'0.7rem', color:'#94a3b8' }}>{p.case_count} previous case{p.case_count !== 1 ? 's' : ''}</p>
+                    )}
+                  </div>
+                  <span style={{ fontSize:'0.8rem', color:'#207652', fontWeight:600, flexShrink:0, marginTop:'2px' }}>Select →</span>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      <div style={{ display:'flex', gap:'10px', paddingTop:'12px', borderTop:'1px solid #f1f5f9' }}>
+        <button type="button" onClick={onSkip}
+          style={{ flex:1, padding:'11px', background:'white', border:'1px solid #e2e8f0', borderRadius:'8px', fontSize:'0.875rem', fontWeight:500, cursor:'pointer', color:'#475569' }}>
+          Create new patient
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Create Case Modal ─────────────────────────────────────────────────────────
 function CreateCaseModal({ open, onClose, onCreated }) {
   const navigate = useNavigate()
-  const [step, setStep]               = useState(1)
+  const [step, setStep]               = useState(0) // 0=patient search, 1=case form, 2=actions
   const [createdCase, setCreatedCase] = useState(null)
   const [form, setForm]               = useState(INITIAL_FORM)
   const [facilities, setFacilities]   = useState([])
@@ -375,7 +467,7 @@ function CreateCaseModal({ open, onClose, onCreated }) {
 
   useEffect(() => {
     if (open) {
-      setForm(INITIAL_FORM); setError(''); setStep(1); setCreatedCase(null)
+      setForm(INITIAL_FORM); setError(''); setStep(0); setCreatedCase(null)
       facilitiesApi.list()
         .then(({ data }) => setFacilities(Array.isArray(data) ? data : data.results || []))
         .catch(() => setError('Could not load facilities.'))
@@ -402,7 +494,21 @@ function CreateCaseModal({ open, onClose, onCreated }) {
       Object.entries(form.vital_signs).forEach(([k, v]) => { if (v !== '') vital_signs[k] = Number(v) })
 
       // Payload keys match EmergencyCaseCreateSerializer fields exactly
-      const payload = {
+      // If linking existing patient, use patient_id and send minimal case fields
+      const isExistingPatient = !!form.patient_id
+      const payload = isExistingPatient ? {
+        patient_id:            form.patient_id,
+        presenting_complaint:  form.presenting_complaint.trim(),
+        danger_signs:          form.danger_signs,
+        gestational_age_weeks: form.gestational_age_weeks ? Number(form.gestational_age_weeks) : null,
+        gravida:               form.gravida  ? Number(form.gravida)  : null,
+        parity:                form.parity   ? Number(form.parity)   : null,
+        membranes_status:      form.membranes_status,
+        fetal_heart_rate:      form.fetal_heart_rate ? Number(form.fetal_heart_rate) : null,
+        obstetric_history:     form.obstetric_history.trim(),
+        vital_signs:           (() => { const vs = {}; Object.entries(form.vital_signs).forEach(([k,v]) => { if (v !== '') vs[k]=Number(v) }); return vs })(),
+        referring_facility:    form.referring_facility,
+      } : {
         patient_name:          form.patient_name.trim(),
         patient_age:           Number(form.patient_age),
         patient_phone_number:  form.patient_phone_number.trim(),
@@ -455,14 +561,33 @@ function CreateCaseModal({ open, onClose, onCreated }) {
         onClick={e => e.stopPropagation()}>
         <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 24px', borderBottom:'1px solid #f1f5f9', position:'sticky', top:0, background:'white', borderRadius:'16px 16px 0 0', zIndex:10}}>
           <div>
-            <h2 style={{margin:0, fontSize:'1.1rem', fontWeight:600, color:'#0f172a'}}>{step===1?'New Emergency Case':'Next Steps'}</h2>
-            <p style={{margin:0, fontSize:'0.8rem', color:'#64748b'}}>Step {step} of 2 — {step===1?'Patient details':'Refer, transport, or consult'}</p>
+            <h2 style={{margin:0, fontSize:'1.1rem', fontWeight:600, color:'#0f172a'}}>{step===0?'Find Patient':step===1?'New Emergency Case':'Next Steps'}</h2>
+            <p style={{margin:0, fontSize:'0.8rem', color:'#64748b'}}>{step===0?'Step 1 of 3 — Search existing patient':step===1?'Step 2 of 3 — Case details':'Step 3 of 3 — Next action'}</p>
           </div>
           {step===1 && <button onClick={handleClose} style={{background:'none', border:'none', cursor:'pointer', color:'#64748b', padding:'4px', borderRadius:'8px'}}><X size={18}/></button>}
         </div>
 
         <div style={{padding:'20px 24px'}}>
-          {step===1 && (
+          {step===0 && (
+            <PatientSearchStep
+              onSelect={(p) => {
+                setForm(f => ({
+                  ...f,
+                  patient_id:           p.id,
+                  patient_name:         p.patient_name || '',
+                  hospital_id:          p.hospital_id  || '',
+                  patient_phone_number: p.patient_phone_number || '',
+                  patient_age:          String(p.age || ''),
+                  patient_town:         p.town || '',
+                  patient_blood_group:  p.blood_group || 'unknown',
+                  patient_anc_visits:   p.anc_visits || 0,
+                }))
+                setStep(1)
+              }}
+              onSkip={() => { setForm(f => ({ ...f, patient_id: null })); setStep(1) }}
+            />
+          )}
+                    {step===1 && (
             <form onSubmit={handleSubmit} noValidate>
               {error && <div style={{background:'#fff4f2', border:'1px solid #ffd0c8', borderRadius:'8px', padding:'10px 14px', color:'#c02812', fontSize:'0.85rem', marginBottom:'16px'}}>{error}</div>}
 

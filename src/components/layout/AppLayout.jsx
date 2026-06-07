@@ -11,6 +11,7 @@ import clsx from 'clsx'
 const NAV_BY_ROLE = {
   health_worker: [
     { to: '/app/dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
+    { to: '/app/patients',       label: 'Patients',       icon: UserCircle },
     { to: '/app/cases',          label: 'Cases',          icon: ClipboardList },
     { to: '/app/referrals',      label: 'Referrals',      icon: ArrowRightLeft },
     { to: '/app/consultations',  label: 'Consultations',  icon: Video },
@@ -18,6 +19,7 @@ const NAV_BY_ROLE = {
   ],
   facility_admin: [
     { to: '/app/dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
+    { to: '/app/patients',       label: 'Patients',       icon: UserCircle },
     { to: '/app/referrals',      label: 'Referrals',      icon: ArrowRightLeft },
     { to: '/app/facility',       label: 'My Facility',    icon: Building2 },
     { to: '/app/transport',      label: 'Transport',      icon: Truck },
@@ -33,6 +35,7 @@ const NAV_BY_ROLE = {
   superadmin: [
     { to: '/app/dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
     { to: '/app/cases',          label: 'All Cases',      icon: ClipboardList },
+    { to: '/app/patients',       label: 'Patients',       icon: UserCircle },
     { to: '/app/referrals',      label: 'All Referrals',  icon: ArrowRightLeft },
     { to: '/app/facilities',     label: 'Facilities',     icon: Building2 },
     { to: '/app/consultations',  label: 'Consultations',  icon: Video },

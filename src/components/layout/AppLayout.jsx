@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import {
   LayoutDashboard, ClipboardList, ArrowRightLeft, Truck,
   Video, Building2, Users, LogOut, Menu, X, Heart,
-  ChevronRight, Bell, Baby, Star, PhoneCall, HeartPulse,
+  ChevronRight, Bell, Baby, Star, PhoneCall, HeartPulse, UserCircle,
 } from 'lucide-react'
 import clsx from 'clsx'
 

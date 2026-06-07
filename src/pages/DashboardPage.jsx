@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { casesApi, referralsApi, transportApi, consultationsApi } from '@/api/client'
+import { casesApi, referralsApi, transportApi, consultationsApi, patientsApi } from '@/api/client'
 import { StatCard, StatusBadge, PageSpinner, DangerSignList } from '@/components/ui'
-import { ClipboardList, ArrowRightLeft, Truck, Video, AlertTriangle, Clock } from 'lucide-react', UserCircle, Calendar }
+import { ClipboardList, ArrowRightLeft, Truck, Video, AlertTriangle, Clock, UserCircle, Calendar } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { Link, Navigate } from 'react-router-dom'
 

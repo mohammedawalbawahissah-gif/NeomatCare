@@ -29,14 +29,6 @@ class Migration(migrations.Migration):
             ),
         ),
 
-        # 2. Add phone_number to User (may already exist via older migration — safe with ignore_if_exists)
-        migrations.AddField(
-            model_name='user',
-            name='phone_number',
-            field=models.CharField(blank=True, default='', max_length=20),
-            preserve_default=False,
-        ),
-
         # 3. Add is_verified to User
         migrations.AddField(
             model_name='user',

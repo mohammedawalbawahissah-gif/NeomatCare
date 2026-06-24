@@ -17,7 +17,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { aiApi } from '@/api/ai'
 import {
-  Bot, X, Send, Minus, ChevronDown, RefreshCw,
+  Heart, X, Send, ChevronDown, RefreshCw,
   Sparkles, AlertCircle, Loader2,
 } from 'lucide-react'
 import clsx from 'clsx'
@@ -71,7 +71,7 @@ function MessageBubble({ msg, accentColor }) {
           className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5"
           style={{ background: accentColor }}
         >
-          <Bot size={12} className="text-white" />
+          <Heart size={11} className="text-white" fill="white" />
         </div>
       )}
       <div
@@ -186,11 +186,10 @@ export default function AssistantWidget({ context = {} }) {
             className={clsx('flex items-center gap-3 px-4 py-3 rounded-t-2xl', config.color)}
           >
             <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
-              <Bot size={16} className="text-white" />
+              <Heart size={16} className="text-white" fill="white" />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-white text-sm font-semibold leading-tight">{config.label}</p>
-              <p className="text-white/70 text-[10px]">Powered by Claude AI</p>
             </div>
             <button
               onClick={clearChat}

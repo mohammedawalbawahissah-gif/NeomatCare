@@ -5,7 +5,7 @@ import AssistantWidget from '@/components/ai/AssistantWidget'
 import {
   LayoutDashboard, ClipboardList, ArrowRightLeft, Truck,
   Video, Building2, Users, LogOut, Menu, X, Heart,
-  ChevronRight, Bell, Baby, Star, PhoneCall, HeartPulse, UserCircle,
+  ChevronRight, Bell, Baby, Star, PhoneCall, HeartPulse, UserCircle, UserCog,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -144,6 +144,7 @@ export default function AppLayout({ children }) {
 
         {/* User footer */}
         <div className="px-3 py-4 border-t border-slate-800">
+          {/* Identity card */}
           <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-slate-800 mb-2">
             <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white text-sm font-semibold shrink-0">
               {user?.name?.[0]?.toUpperCase() || 'U'}
@@ -155,6 +156,20 @@ export default function AppLayout({ children }) {
               </span>
             </div>
           </div>
+          {/* Profile link — available to every role */}
+          <NavLink
+            to="/app/profile"
+            onClick={() => setOpen(false)}
+            className={({ isActive }) => clsx(
+              'flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors mb-1',
+              isActive
+                ? 'bg-brand-600 text-white'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            )}
+          >
+            <UserCog size={15} />
+            Edit Profile
+          </NavLink>
           <button
             onClick={handleLogout}
             className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 text-sm transition-colors"

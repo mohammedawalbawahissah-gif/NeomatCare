@@ -6,8 +6,9 @@ urlpatterns = [
     path("api/auth/",          include("apps.accounts.urls")),
     path("api/facilities/",    include("apps.facilities.urls")),   # was api/
     path("api/cases/",         include("apps.cases.urls")),        # was api/
-    path("api/patients/",       include("apps.cases.urls")),        # patient portal root alias
+    path("api/patients/",      include("apps.cases.urls")),        # patient portal root alias
     path("api/referrals/",     include("apps.referrals.urls")),    # was api/
     path("api/transport/",     include("apps.transport.urls")),
     path("api/consultations/", include("apps.consultations.urls")),
+    path('api/ai/',            include('apps.ai.urls')),
 ]

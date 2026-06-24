@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
+import AssistantWidget from '@/components/ai/AssistantWidget'
 import {
   LayoutDashboard, ClipboardList, ArrowRightLeft, Truck,
   Video, Building2, Users, LogOut, Menu, X, Heart,
@@ -191,6 +192,9 @@ export default function AppLayout({ children }) {
           </div>
         </main>
       </div>
+
+      {/* Floating AI Assistant — role-aware, available across all portals */}
+      <AssistantWidget />
     </div>
   )
 }

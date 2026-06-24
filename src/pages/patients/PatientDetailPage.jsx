@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { patientsApi, casesApi } from '@/api/client'
 import { PageSpinner, Alert, Modal, Spinner, FormField, DangerSignList } from '@/components/ui'
+import RiskNarratePanel from '@/components/ai/RiskNarratePanel'
+import ANCAnomalyPanel from '@/components/ai/ANCAnomalyPanel'
 import {
   ArrowLeft, UserCircle, Plus, Shield, ShieldOff, ShieldCheck,
   AlertTriangle, Calendar, Activity, ClipboardList, RefreshCw,
@@ -296,6 +298,15 @@ export default function PatientDetailPage() {
         </div>
       )}
 
+      {/* AI Risk Narration */}
+      {p.risk_level && p.risk_flags?.length > 0 && (
+        <RiskNarratePanel
+          patientId={p.id}
+          riskLevel={p.risk_level}
+          riskFlags={p.risk_flags}
+        />
+      )}
+
       {/* Tabs */}
       <div className="flex gap-1 border-b border-slate-100 pb-0">
         {TABS.map(t => (
@@ -373,6 +384,11 @@ export default function PatientDetailPage() {
               </button>
             </div>
           )}
+          {/* AI ANC Anomaly Detection */}
+          <ANCAnomalyPanel
+            patientId={p.id}
+            visitCount={p.anc_visit_log?.length || 0}
+          />
           {!p.anc_visit_log?.length ? (
             <div className="card px-5 py-8 text-center">
               <Stethoscope size={28} className="text-slate-300 mx-auto mb-2"/>

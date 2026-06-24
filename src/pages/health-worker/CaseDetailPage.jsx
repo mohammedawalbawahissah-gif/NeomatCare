@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { casesApi, referralsApi, transportApi, consultationsApi, facilitiesApi } from '@/api/client'
 import { PageSpinner, Alert, DangerSignList, Modal, Spinner, FormField } from '@/components/ui'
+import TriageAIPanel from '@/components/ai/TriageAIPanel'
+import HandoverBriefPanel from '@/components/ai/HandoverBriefPanel'
 import { ArrowLeft, Plus, ArrowRightLeft, Truck, Video, MapPin, Activity, Pencil, CheckCircle, RefreshCw, ChevronRight } from 'lucide-react'
 import { format } from 'date-fns'
 import { useAuth } from '@/contexts/AuthContext'
@@ -892,13 +894,31 @@ export default function CaseDetailPage() {
               ))}
               {!c.triage_notes?.length && <p className="px-5 py-6 text-sm text-center text-slate-400">No clinical notes yet</p>}
             </div>
-            <form onSubmit={handleAddNote} className="px-5 py-4 border-t border-slate-100 flex gap-2">
-              <input value={note} onChange={e => setNote(e.target.value)} className="input-field flex-1" placeholder="Add a clinical note…"/>
-              <button type="submit" disabled={addingNote||!note.trim()} className="btn-primary shrink-0">
-                {addingNote ? <Spinner size={14} className="text-white"/> : <Plus size={14}/>}
-              </button>
-            </form>
+            <div className="px-5 py-4 border-t border-slate-100 space-y-3">
+              {/* AI triage extraction — only for staff roles */}
+              {canAction && note.trim().length > 20 && (
+                <TriageAIPanel
+                  note={note}
+                  caseId={c.id}
+                  onApply={({ danger_signs, presenting_complaint_suggestion }) => {
+                    // Surface a toast-style hint; actual field update happens via EditCaseModal
+                    setEditModal(true)
+                  }}
+                />
+              )}
+              <form onSubmit={handleAddNote} className="flex gap-2">
+                <input value={note} onChange={e => setNote(e.target.value)} className="input-field flex-1" placeholder="Add a clinical note…"/>
+                <button type="submit" disabled={addingNote||!note.trim()} className="btn-primary shrink-0">
+                  {addingNote ? <Spinner size={14} className="text-white"/> : <Plus size={14}/>}
+                </button>
+              </form>
+            </div>
           </div>
+
+          {/* AI Handover Brief */}
+          {canAction && c.id && (
+            <HandoverBriefPanel caseId={c.id} />
+          )}
         </div>
 
         <div className="space-y-5">

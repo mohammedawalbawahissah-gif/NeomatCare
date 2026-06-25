@@ -48,7 +48,12 @@ class SpecialistProfileViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="available")
     def available(self, request):
         qs = self.get_queryset().filter(is_available=True)
-        return Response(self.get_serializer(qs, many=True).data)
+        # Fallback: if no specialist has is_available=True (e.g. all defaulted to False),
+        # return all specialists so the dropdown is never silently empty.
+        if not qs.exists():
+            qs = self.get_queryset()
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
 
     @action(detail=True, methods=["get"], url_path="schedules")
     def schedules(self, request, pk=None):

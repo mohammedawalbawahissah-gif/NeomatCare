@@ -18,7 +18,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 
-from ai_service import (
+from apps.ai.service import (
     AIServiceError,
     triage_extract,
     risk_narrate,

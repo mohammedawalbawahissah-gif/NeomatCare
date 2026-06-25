@@ -175,7 +175,10 @@ export const consultationsApi = {
     create:    (data)     => api.post('/api/consultations/specialists/', data),
     detail:    (id)       => api.get(`/api/consultations/specialists/${id}/`),
     update:    (id, data) => api.patch(`/api/consultations/specialists/${id}/`, data),
-    available: ()         => api.get('/api/consultations/specialists/', { params: { is_available: true } }),
+    // Use the dedicated @action endpoint — the ?is_available=true filter param uses
+    // django-filter's NullBooleanSelect widget which expects "2"/"3" not "true"/"false"
+    // and silently returns no results. The /available/ action filters correctly server-side.
+    available: ()         => api.get('/api/consultations/specialists/available/'),
     schedules: (id)       => api.get(`/api/consultations/specialists/${id}/schedules/`),
   },
   messages: {

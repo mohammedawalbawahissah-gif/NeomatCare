@@ -45,6 +45,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff   = models.BooleanField(default=False)
     # Email/phone verified flag — set True after OTP confirmed
     is_verified = models.BooleanField(default=False)
+    # Expo push notification token registered by the mobile app.
+    # Format: ExponentPushToken[xxxx]. Set automatically on login/PushTokenView.
+    expo_push_token = models.CharField(max_length=200, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     objects = UserManager()

@@ -9,6 +9,15 @@ FACILITY_REQUIRED_ROLES = {'health_worker', 'facility_admin'}
 # Roles that are exempt from OTP verification (superadmin is created via manage.py only)
 OTP_EXEMPT_ROLES = {'superadmin'}
 
+# Roles the public /register/ endpoint is allowed to create.
+# superadmin is intentionally excluded — it must only ever be created via
+# `manage.py createsuperuser` (or by an existing superadmin through the
+# admin user-management endpoints). Without this whitelist, anyone could
+# POST {"role": "superadmin"} to this open endpoint and — since superadmin
+# is also OTP-exempt — receive an active, verified superadmin account
+# instantly with no verification step at all.
+SELF_REGISTERABLE_ROLES = {'health_worker', 'facility_admin', 'specialist', 'driver', 'patient'}
+
 
 class RegisterSerializer(serializers.ModelSerializer):
     password       = serializers.CharField(write_only=True, validators=[validate_password])
@@ -28,6 +37,13 @@ class RegisterSerializer(serializers.ModelSerializer):
             'facility', 'phone_number', 'license_number', 'otp_channel',
         ]
         extra_kwargs = {'role': {'required': False}}
+
+    def validate_role(self, value):
+        if value and value not in SELF_REGISTERABLE_ROLES:
+            raise serializers.ValidationError(
+                'This role cannot be self-registered. Please contact an administrator.'
+            )
+        return value
 
     def validate(self, attrs):
         if attrs['password'] != attrs.pop('password2'):

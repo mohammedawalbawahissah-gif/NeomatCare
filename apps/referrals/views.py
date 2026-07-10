@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.permissions import IsHealthWorker, IsFacilityAdmin
-from apps.facilities.models import HealthFacility
+from apps.facilities.models import HealthFacility, FacilityLevel
 from apps.cases.models import EmergencyCase
 
 from .models import Referral, ReferralStatusLog, VALID_TRANSITIONS
@@ -100,7 +100,28 @@ class ReferralSuggestView(APIView):
         engine = ReferralEngine()
         result = engine.suggest(case_snap, facility_snaps)
         payload = suggestion_to_dict(result)
-        recommended_facility = payload.get("recommended_facility")
+
+        # suggestion_to_dict() returns a flat "recommendations" list (each with
+        # facility_id/facility_name/facility_level keys). The frontend expects a
+        # single top pick under "recommended_facility" plus the rest under
+        # "alternatives", each shaped as {id, name, level, distance_km, ...}.
+        def _to_facility_dict(rec):
+            return {
+                "id":                        rec["facility_id"],
+                "name":                      rec["facility_name"],
+                "level":                     rec["facility_level"],
+                "level_display":             dict(FacilityLevel.choices).get(rec["facility_level"], ""),
+                "score":                     rec["score"],
+                "capability_score":          rec["capability_score"],
+                "distance_km":               rec["distance_km"],
+                "estimated_travel_minutes":  rec["estimated_travel_minutes"],
+                "confidence":                rec["confidence"],
+                "reason_codes":              rec["reason_codes"],
+            }
+
+        recommendations = payload.get("recommendations", [])
+        recommended_facility = _to_facility_dict(recommendations[0]) if recommendations else None
+        alternatives = [_to_facility_dict(r) for r in recommendations[1:]]
 
         if not recommended_facility:
             return Response({
@@ -117,8 +138,8 @@ class ReferralSuggestView(APIView):
             "engine_version": payload.get("engine_version"),
             "emergency_case_id": str(case.id),
             "recommended_facility": recommended_facility,
-            "alternatives": payload.get("alternatives", []),
-            "total_ranked_facilities": 1 + len(payload.get("alternatives", [])),
+            "alternatives": alternatives,
+            "total_ranked_facilities": len(recommendations),
         })
 
 

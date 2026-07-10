@@ -442,8 +442,27 @@ class SuggestFacilitiesView(APIView):
             return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
 
         try:
-            from apps.referrals.engine import get_facility_recommendations
-            result = get_facility_recommendations(case)
-            return Response(result)
+            from referral_engine import ReferralEngine, CaseSnapshot, suggestion_to_dict
+            from apps.facilities.models import HealthFacility
+            from apps.referrals.views import _build_facility_snapshot
+
+            if not case.referring_facility:
+                return Response(
+                    {"detail": "No referring facility assigned to this case."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            case_snap = CaseSnapshot(
+                id=str(case.id),
+                danger_signs=case.danger_signs or [],
+                referring_facility_lat=case.referring_facility.latitude,
+                referring_facility_lng=case.referring_facility.longitude,
+            )
+            facilities = HealthFacility.objects.filter(is_active=True).exclude(id=case.referring_facility_id)
+            facility_snaps = [_build_facility_snapshot(f) for f in facilities]
+
+            engine = ReferralEngine()
+            result = engine.suggest(case_snap, facility_snaps)
+            return Response(suggestion_to_dict(result))
         except Exception as e:
             return Response({"detail": "Recommendation engine error.", "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

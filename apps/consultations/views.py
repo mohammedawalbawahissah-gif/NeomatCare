@@ -48,12 +48,7 @@ class SpecialistProfileViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="available")
     def available(self, request):
         qs = self.get_queryset().filter(is_available=True)
-        # Fallback: if no specialist has is_available=True (e.g. all defaulted to False),
-        # return all specialists so the dropdown is never silently empty.
-        if not qs.exists():
-            qs = self.get_queryset()
-        serializer = self.get_serializer(qs, many=True)
-        return Response(serializer.data)
+        return Response(self.get_serializer(qs, many=True).data)
 
     @action(detail=True, methods=["get"], url_path="schedules")
     def schedules(self, request, pk=None):
@@ -76,7 +71,11 @@ class ConsultationViewSet(viewsets.ModelViewSet):
         if user.role == 'facility_admin':
             # Consultations linked to referrals from their facility
             return qs.filter(referral__referring_facility=user.facility)
-        # Health workers and specialists see only their own
+        if user.role == 'specialist':
+            # Specialists see consultations assigned to them, plus any they requested
+            from django.db.models import Q
+            return qs.filter(Q(specialist__user=user) | Q(requested_by=user))
+        # Health workers see only their own
         return qs.filter(requested_by=user)
 
     def perform_create(self, serializer):

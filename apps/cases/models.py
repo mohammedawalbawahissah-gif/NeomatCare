@@ -167,10 +167,10 @@ class Patient(models.Model):
             flags.append("No ANC visits recorded")
         # Count previous cases with high-risk danger signs
         high_risk_signs = {"PPH","APH","RUPTURED_UTERUS","ECLAMPSIA","SEVERE_PRE_ECLAMPSIA","CORD_PROLAPSE"}
-        prior_high = self.cases.filter(
-            danger_signs__overlap=list(high_risk_signs)
-        ).count() if hasattr(self, '_prefetched_objects_cache') else \
-            self.cases.filter(danger_signs__len__gt=0).count()
+        prior_high = sum(
+            1 for case_signs in self.cases.values_list("danger_signs", flat=True)
+            if case_signs and set(case_signs) & high_risk_signs
+        )
         if prior_high > 0:
             flags.append("Prior emergency with high-risk danger sign")
 

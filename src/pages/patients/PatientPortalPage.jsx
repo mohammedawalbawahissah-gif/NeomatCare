@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { patientApi, transportApi, authApi } from '@/api/client'
+import { patientApi, transportApi } from '@/api/client'
 import {
   Baby, Star, PhoneCall, Truck, HeartPulse,
   ChevronDown, ChevronUp, Send, Plus, AlertTriangle,
@@ -535,43 +535,13 @@ function MyHealthTab() {
   const { user } = useAuth()
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [editing, setEditing] = useState(false)
-  const [form, setFormData]   = useState({ name: '', email: '', phone_number: '' })
-  const [saving, setSaving]   = useState(false)
-  const [saveMsg, setSaveMsg] = useState(null)
 
   useEffect(() => {
     patientApi.me()
-      .then(({ data }) => {
-        setProfile(data)
-        setFormData({ name: data.name || '', email: data.email || '', phone_number: data.phone_number || '' })
-      })
+      .then(({ data }) => setProfile(data))
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
-
-  const handleSave = async (e) => {
-    e.preventDefault()
-    setSaving(true)
-    setSaveMsg(null)
-    try {
-      const { data } = await authApi.updateMe({
-        name: form.name.trim(),
-        email: form.email.trim(),
-        phone_number: form.phone_number.trim(),
-      })
-      setProfile(data)
-      setEditing(false)
-      setSaveMsg({ type: 'success', text: 'Profile updated!' })
-      setTimeout(() => setSaveMsg(null), 3000)
-    } catch (err) {
-      const d = err?.response?.data
-      const msg = d ? Object.values(d).flat().join(' ') : 'Could not save changes.'
-      setSaveMsg({ type: 'error', text: msg })
-    } finally {
-      setSaving(false)
-    }
-  }
 
   const info = profile || user
 
@@ -579,94 +549,37 @@ function MyHealthTab() {
 
   return (
     <div>
-      {/* Save message */}
-      {saveMsg && (
-        <div style={{
-          marginBottom: '12px', padding: '10px 16px', borderRadius: '10px',
-          background: saveMsg.type === 'success' ? '#f0fdf4' : '#fff1f2',
-          border: `1px solid ${saveMsg.type === 'success' ? '#86efac' : '#fca5a5'}`,
-          color: saveMsg.type === 'success' ? '#166534' : '#991b1b',
-          fontSize: '0.875rem', fontWeight: 500,
-          display: 'flex', alignItems: 'center', gap: '8px',
-        }}>
-          {saveMsg.type === 'success' ? <CheckCircle size={15}/> : '⚠'} {saveMsg.text}
-        </div>
-      )}
-
       {/* Profile card */}
       <div style={{ ...card, background:'linear-gradient(135deg,#f0fdf4,#dcfce7)', border:'1px solid #86efac' }}>
-        {/* Header */}
         <div style={{ display:'flex', alignItems:'center', gap:'14px', marginBottom:'1rem' }}>
           <div style={{ width:'52px', height:'52px', borderRadius:'50%', background:'#207652', display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontWeight:700, fontSize:'1.2rem', flexShrink:0 }}>
             {info?.name?.[0]?.toUpperCase() || 'P'}
           </div>
-          <div style={{ flex:1, minWidth:0 }}>
-            <p style={{ margin:0, fontWeight:700, fontSize:'1rem', color:'#166534', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{info?.name}</p>
+          <div>
+            <p style={{ margin:0, fontWeight:700, fontSize:'1rem', color:'#166534' }}>{info?.name}</p>
             <p style={{ margin:0, fontSize:'0.8rem', color:'#15803d' }}>Patient Account</p>
             {info?.is_verified && (
               <span style={{ display:'inline-flex', alignItems:'center', gap:'4px', fontSize:'0.72rem', background:'#dcfce7', color:'#166534', padding:'2px 8px', borderRadius:'999px', fontWeight:600, marginTop:'2px' }}>
-                <CheckCircle size={11}/> Verified
+                <CheckCircle size={11} /> Verified
               </span>
             )}
           </div>
-          <button
-            onClick={() => { setEditing(e => !e); setSaveMsg(null) }}
-            style={{ background: editing ? 'white' : '#207652', color: editing ? '#64748b' : 'white', border: '1px solid', borderColor: editing ? '#e2e8f0' : '#207652', borderRadius:'8px', padding:'6px 14px', fontSize:'0.8rem', fontWeight:600, cursor:'pointer', flexShrink:0 }}
-          >
-            {editing ? '✕ Cancel' : '✏ Edit Profile'}
-          </button>
         </div>
 
-        {/* View mode */}
-        {!editing && (
-          <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
-            {[
-              { icon:<Mail size={14}/>,     label:'Email',  value: info?.email },
-              { icon:<Phone size={14}/>,    label:'Phone',  value: info?.phone_number || 'Not provided' },
-              { icon:<Shield size={14}/>,   label:'Role',   value: 'Patient' },
-              { icon:<Calendar size={14}/>, label:'Joined', value: info?.created_at ? new Date(info.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'}) : '—' },
-            ].map(({ icon, label: lbl, value }) => (
-              <div key={lbl} style={{ display:'flex', alignItems:'center', gap:'8px', fontSize:'0.875rem' }}>
-                <span style={{ color:'#64748b', flexShrink:0 }}>{icon}</span>
-                <span style={{ color:'#64748b', minWidth:'52px' }}>{lbl}:</span>
-                <span style={{ color:'#0f172a', fontWeight:500 }}>{value}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Edit mode */}
-        {editing && (
-          <form onSubmit={handleSave} style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
-            {[
-              { key:'name',         label:'Full Name',     type:'text',  placeholder:'Your full name',   required:true  },
-              { key:'email',        label:'Email Address', type:'email', placeholder:'your@email.com',  required:true  },
-              { key:'phone_number', label:'Phone Number',  type:'tel',   placeholder:'+233 XX XXX XXXX', required:false },
-            ].map(({ key, label: lbl, type, placeholder, required }) => (
-              <div key={key}>
-                <label style={{ display:'block', fontSize:'0.72rem', fontWeight:600, color:'#166534', marginBottom:'4px', textTransform:'uppercase', letterSpacing:'0.04em' }}>{lbl}</label>
-                <input
-                  type={type}
-                  required={required}
-                  value={form[key]}
-                  onChange={e => setFormData(f => ({ ...f, [key]: e.target.value }))}
-                  placeholder={placeholder}
-                  style={{ width:'100%', padding:'9px 12px', border:'1px solid #86efac', borderRadius:'8px', fontSize:'0.875rem', outline:'none', background:'white', color:'#0f172a', boxSizing:'border-box' }}
-                />
-              </div>
-            ))}
-            <div style={{ display:'flex', justifyContent:'flex-end', gap:'8px', paddingTop:'4px' }}>
-              <button type="button" onClick={() => { setEditing(false); setFormData({ name: info?.name||'', email: info?.email||'', phone_number: info?.phone_number||'' }) }}
-                style={{ padding:'8px 16px', background:'white', color:'#64748b', border:'1px solid #e2e8f0', borderRadius:'8px', fontSize:'0.875rem', fontWeight:600, cursor:'pointer' }}>
-                Cancel
-              </button>
-              <button type="submit" disabled={saving}
-                style={{ padding:'8px 18px', background: saving ? '#86efac' : '#207652', color:'white', border:'none', borderRadius:'8px', fontSize:'0.875rem', fontWeight:600, cursor: saving ? 'not-allowed' : 'pointer' }}>
-                {saving ? 'Saving…' : '✓ Save Changes'}
-              </button>
+        <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
+          {[
+            { icon:<Mail size={14} />,    label:'Email',  value: info?.email },
+            { icon:<Phone size={14} />,   label:'Phone',  value: info?.phone_number || 'Not provided' },
+            { icon:<Shield size={14} />,  label:'Role',   value: 'Patient' },
+            { icon:<Calendar size={14} />,label:'Joined', value: info?.created_at ? new Date(info.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'}) : '—' },
+          ].map(({ icon, label: lbl, value }) => (
+            <div key={lbl} style={{ display:'flex', alignItems:'center', gap:'8px', fontSize:'0.875rem' }}>
+              <span style={{ color:'#64748b', flexShrink:0 }}>{icon}</span>
+              <span style={{ color:'#64748b', minWidth:'52px' }}>{lbl}:</span>
+              <span style={{ color:'#0f172a', fontWeight:500 }}>{value}</span>
             </div>
-          </form>
-        )}
+          ))}
+        </div>
       </div>
 
       {/* Privacy notice */}

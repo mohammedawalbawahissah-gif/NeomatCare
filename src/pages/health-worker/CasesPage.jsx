@@ -257,21 +257,8 @@ function ConsultationPanel({ caseData, onDone, navigate }) {
 
   useEffect(() => {
     consultationsApi.specialists.available()
-      .then(({ data }) => {
-        const list = Array.isArray(data) ? data : (data.results || [])
-        setSpecialists(list)
-        // If list is empty it's not an error — the "Any available" option still works
-      })
-      .catch((err) => {
-        const status = err?.response?.status
-        if (status === 404) {
-          // Endpoint not found — fall back to listing all specialists
-          return consultationsApi.specialists.list()
-            .then(({ data }) => setSpecialists(Array.isArray(data) ? data : (data.results || [])))
-            .catch(() => setError('Could not load specialists. You can still book with "Any available".'))
-        }
-        setError('Could not load specialists. You can still book with "Any available".')
-      })
+      .then(({ data }) => setSpecialists(Array.isArray(data) ? data : data.results || []))
+      .catch(() => setError('Could not load specialists.'))
       .finally(() => setLoading(false))
   }, [])
 

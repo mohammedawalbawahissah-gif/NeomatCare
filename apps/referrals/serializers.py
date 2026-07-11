@@ -28,7 +28,7 @@ class ReferralListSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Referral
         fields = [
-            "id", "status",
+            "id", "status", "emergency_case_id",
             "referring_facility_name", "receiving_facility_name",
             "maternal_outcome", "neonatal_outcome",
             "created_by_name", "created_at", "updated_at",

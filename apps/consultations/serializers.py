@@ -53,11 +53,19 @@ class ConsultationMessageSerializer(serializers.ModelSerializer):
 
 class ConsultationSerializer(serializers.ModelSerializer):
     messages = ConsultationMessageSerializer(many=True, read_only=True)
+    specialist_name    = serializers.SerializerMethodField()
+    requested_by_name  = serializers.CharField(source="requested_by.name", read_only=True)
 
     class Meta:
         model  = Consultation
         fields = [
-            "id", "specialist", "referral", "requested_by",
+            "id", "specialist", "specialist_name", "referral",
+            "requested_by", "requested_by_name",
             "status", "notes", "messages", "created_at", "updated_at",
         ]
         read_only_fields = ["id", "requested_by", "created_at", "updated_at"]
+
+    def get_specialist_name(self, obj):
+        if not obj.specialist:
+            return None
+        return obj.specialist.user.name if obj.specialist.user else obj.specialist.display_name

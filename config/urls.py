@@ -11,4 +11,5 @@ urlpatterns = [
     path("api/referrals/",     include("apps.referrals.urls")),    # was api/
     path("api/transport/",     include("apps.transport.urls")),
     path("api/consultations/", include("apps.consultations.urls")),
+    path("api/ai/",             include("apps.ai.urls")),
 ]

@@ -7,6 +7,7 @@ import {
   ChevronRight, Bell, Baby, Star, PhoneCall, HeartPulse, UserCircle,
 } from 'lucide-react'
 import clsx from 'clsx'
+import AssistantWidget from '@/components/ai/AssistantWidget'
 
 const NAV_BY_ROLE = {
   health_worker: [
@@ -191,6 +192,9 @@ export default function AppLayout({ children }) {
           </div>
         </main>
       </div>
+
+      {/* Floating AI Assistant — role-aware, available across all portals */}
+      <AssistantWidget />
     </div>
   )
 }

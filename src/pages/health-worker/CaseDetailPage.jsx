@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { casesApi, referralsApi, transportApi, consultationsApi, facilitiesApi } from '@/api/client'
 import { PageSpinner, Alert, DangerSignList, Modal, Spinner, FormField } from '@/components/ui'
+import TriageAIPanel from '@/components/ai/TriageAIPanel'
+import HandoverBriefPanel from '@/components/ai/HandoverBriefPanel'
+import TransportRecommendPanel from '@/components/ai/TransportRecommendPanel'
 import { ArrowLeft, Plus, ArrowRightLeft, Truck, Video, MapPin, Activity, Pencil, CheckCircle, RefreshCw, ChevronRight } from 'lucide-react'
 import { format } from 'date-fns'
 import { useAuth } from '@/contexts/AuthContext'
@@ -581,7 +584,7 @@ function StatusUpdateModal({ open, onClose, referral, onUpdated }) {
 // ── Transport Modal ────────────────────────────────────────────────────────────
 // transportApi.vehicles.available() → Vehicle list
 // transportApi.requests.create({ vehicle?, notes? })
-function TransportModal({ open, onClose }) {
+function TransportModal({ open, onClose, caseId }) {
   const navigate = useNavigate()
   const [available, setAvailable] = useState([])
   const [form, setForm]   = useState({ vehicle:'', notes:'' })
@@ -612,25 +615,35 @@ function TransportModal({ open, onClose }) {
   return (
     <Modal open={open} onClose={onClose} title="Request Transport">
       <Alert type="error" message={error} className="mb-4"/>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <FormField label="Select Vehicle">
-          {loading ? <Spinner/> : (
-            <select value={form.vehicle} onChange={e => setForm(f=>({...f,vehicle:e.target.value}))} className="input-field">
-              <option value="">— Any available vehicle —</option>
-              {available.map(t => <option key={t.id} value={t.id}>{t.registration} ({t.vehicle_type?.replace(/_/g,' ')}){t.driver_name?` · ${t.driver_name}`:''}</option>)}
-            </select>
-          )}
-        </FormField>
-        <FormField label="Notes">
-          <textarea rows={2} value={form.notes} onChange={e => setForm(f=>({...f,notes:e.target.value}))} className="input-field resize-none" placeholder="Location, landmarks, case reference…"/>
-        </FormField>
-        <div className="flex gap-3 pt-2 border-t border-slate-100">
-          <button type="button" onClick={onClose} className="btn-secondary flex-1 justify-center">Cancel</button>
-          <button type="submit" disabled={saving} className="btn-primary flex-1 justify-center">
-            {saving ? <Spinner size={16} className="text-white"/> : <><Truck size={14}/> Request Transport</>}
-          </button>
-        </div>
-      </form>
+      <div className="space-y-4">
+        {/* AI dispatch recommendation — analyses case urgency + available vehicles */}
+        {caseId && !loading && (
+          <TransportRecommendPanel
+            caseId={caseId}
+            availableVehicles={available}
+            onSelect={(vehicleId) => setForm(f => ({ ...f, vehicle: vehicleId }))}
+          />
+        )}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <FormField label="Select Vehicle">
+            {loading ? <Spinner/> : (
+              <select value={form.vehicle} onChange={e => setForm(f=>({...f,vehicle:e.target.value}))} className="input-field">
+                <option value="">— Any available vehicle —</option>
+                {available.map(t => <option key={t.id} value={t.id}>{t.registration} ({t.vehicle_type?.replace(/_/g,' ')}){t.driver_name?` · ${t.driver_name}`:''}</option>)}
+              </select>
+            )}
+          </FormField>
+          <FormField label="Notes">
+            <textarea rows={2} value={form.notes} onChange={e => setForm(f=>({...f,notes:e.target.value}))} className="input-field resize-none" placeholder="Location, landmarks, case reference…"/>
+          </FormField>
+          <div className="flex gap-3 pt-2 border-t border-slate-100">
+            <button type="button" onClick={onClose} className="btn-secondary flex-1 justify-center">Cancel</button>
+            <button type="submit" disabled={saving} className="btn-primary flex-1 justify-center">
+              {saving ? <Spinner size={16} className="text-white"/> : <><Truck size={14}/> Request Transport</>}
+            </button>
+          </div>
+        </form>
+      </div>
     </Modal>
   )
 }
@@ -892,13 +905,28 @@ export default function CaseDetailPage() {
               ))}
               {!c.triage_notes?.length && <p className="px-5 py-6 text-sm text-center text-slate-400">No clinical notes yet</p>}
             </div>
-            <form onSubmit={handleAddNote} className="px-5 py-4 border-t border-slate-100 flex gap-2">
-              <input value={note} onChange={e => setNote(e.target.value)} className="input-field flex-1" placeholder="Add a clinical note…"/>
-              <button type="submit" disabled={addingNote||!note.trim()} className="btn-primary shrink-0">
-                {addingNote ? <Spinner size={14} className="text-white"/> : <Plus size={14}/>}
-              </button>
+            <form onSubmit={handleAddNote} className="px-5 py-4 border-t border-slate-100 space-y-3">
+              {/* AI triage extraction — only for staff roles, once there's enough text to analyse */}
+              {canAction && note.trim().length > 20 && (
+                <TriageAIPanel
+                  note={note}
+                  caseId={c.id}
+                  onApply={() => setEditModal(true)}
+                />
+              )}
+              <div className="flex gap-2">
+                <input value={note} onChange={e => setNote(e.target.value)} className="input-field flex-1" placeholder="Add a clinical note…"/>
+                <button type="submit" disabled={addingNote||!note.trim()} className="btn-primary shrink-0">
+                  {addingNote ? <Spinner size={14} className="text-white"/> : <Plus size={14}/>}
+                </button>
+              </div>
             </form>
           </div>
+
+          {/* AI Handover Brief */}
+          {canAction && c.id && (
+            <HandoverBriefPanel caseId={c.id} />
+          )}
         </div>
 
         <div className="space-y-5">
@@ -928,7 +956,7 @@ export default function CaseDetailPage() {
 
       <EditCaseModal open={editModal} onClose={() => setEditModal(false)} caseData={c} onSaved={updated => { setCaseData(updated); setEditModal(false) }}/>
       {referralModal  && <ReferralModal    open onClose={() => setReferralModal(false)}  caseData={c}/>}
-      {transportModal && <TransportModal   open onClose={() => setTransportModal(false)}/>}
+      {transportModal && <TransportModal   open onClose={() => setTransportModal(false)} caseId={c.id}/>}
       {consultModal   && <ConsultationModal open onClose={() => setConsultModal(false)} caseData={c}/>}
     </div>
   )

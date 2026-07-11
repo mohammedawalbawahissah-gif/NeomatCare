@@ -4,6 +4,7 @@ import { referralsApi, facilitiesApi, transportApi } from '@/api/client'
 import { PageSpinner, StatusBadge, EmptyState, Alert, Modal, Spinner, FormField } from '@/components/ui'
 import { ArrowRightLeft, ArrowLeft, Clock, CheckCircle, ChevronRight, Sparkles, Search, Phone } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
+import HandoverBriefPanel from '@/components/ai/HandoverBriefPanel'
 
 // ── Referral List ─────────────────────────────────────────────────────────────
 export function ReferralsPage() {
@@ -737,6 +738,9 @@ export function ReferralDetailPage() {
 
         {/* Sidebar */}
         <div className="space-y-4">
+          {/* AI Handover Brief */}
+          <HandoverBriefPanel referralId={r.id} />
+
           <div className="card px-5 py-4 space-y-3">
             <div><p className="text-xs text-slate-400">Created by</p><p className="text-sm font-medium text-slate-800">{r.created_by_name}</p></div>
             <div><p className="text-xs text-slate-400">Created</p><p className="text-sm font-medium text-slate-800">{format(new Date(r.created_at), 'dd MMM yyyy, HH:mm')}</p></div>

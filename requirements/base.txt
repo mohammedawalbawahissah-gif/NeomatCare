@@ -30,3 +30,6 @@ anthropic>=0.69.0
 
 # Whitenoise
 whitenoise==6.7.0
+
+# Gunicorn
+gunicorn==23.0.0

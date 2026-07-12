@@ -3,11 +3,25 @@ apps/wellness/services.py
 ---------------------------
 get_pregnancy_snapshot() — computes current week/day/month from
     Patient.expected_delivery_date. Nothing is stored; it's always
-    derived fresh from the single source of truth.
+    derived fresh from the single source of truth. Returns content at
+    ALL FOUR granularities: daily, weekly, monthly, trimester.
 
-predict_next_cycle() — simple average-based prediction from a
-    patient's logged CycleEntry history. Purely arithmetic, not
-    medical advice.
+set_self_reported_edd() — lets a logged-in patient set their own
+    expected_delivery_date via a last-menstrual-period date, when they
+    have a linked Patient record but no EDD on file yet (e.g. before
+    their first clinic visit). This directly overwrites
+    Patient.expected_delivery_date — same field a clinician would set
+    later, so a clinician visit naturally supersedes it. It does NOT
+    create a new Patient record if none is linked; that stays a
+    health-worker action (CreatePatientModal), since a full clinical
+    Patient record needs fields a patient shouldn't self-declare
+    (hospital_id, facility, etc).
+
+predict_next_cycle() — average-based prediction from a patient's
+    logged CycleEntry history. Gives an estimate after just ONE logged
+    period (using a standard 28-day cycle assumption, clearly flagged
+    as an estimate) and switches to a personalized average once 2+
+    entries exist. Purely arithmetic, not medical advice.
 
 generate_ai_message() — calls the existing apps.ai.service chat()
     function (role='patient') so pregnancy updates use the same
@@ -17,9 +31,17 @@ generate_ai_message() — calls the existing apps.ai.service chat()
 import logging
 from datetime import date, timedelta
 
-from .content import get_daily_focus, get_monthly_content, get_weekly_content
+from .content import (
+    get_daily_content,
+    get_monthly_content,
+    get_trimester_content,
+    get_weekly_content,
+)
 
 logger = logging.getLogger(__name__)
+
+PREGNANCY_DAYS = 280  # 40 weeks, standard convention
+DEFAULT_CYCLE_LENGTH_DAYS = 28  # used only for the single-entry estimate
 
 
 def get_pregnancy_snapshot(patient) -> dict | None:
@@ -29,7 +51,6 @@ def get_pregnancy_snapshot(patient) -> dict | None:
     if not edd:
         return None
 
-    PREGNANCY_DAYS = 280  # 40 weeks, standard convention
     days_remaining = (edd - date.today()).days
     day_of_pregnancy = max(0, min(PREGNANCY_DAYS, PREGNANCY_DAYS - days_remaining))
     current_week = max(1, min(42, (day_of_pregnancy // 7) + 1))
@@ -41,30 +62,64 @@ def get_pregnancy_snapshot(patient) -> dict | None:
         "day_of_pregnancy": day_of_pregnancy,
         "current_week": current_week,
         "current_month": current_month,
+        "daily_content": get_daily_content(day_of_pregnancy, current_week),
         "weekly_content": get_weekly_content(current_week),
         "monthly_content": get_monthly_content(current_month),
-        "daily_focus": get_daily_focus(day_of_pregnancy),
+        "trimester_content": get_trimester_content(current_week),
     }
 
 
-def predict_next_cycle(user) -> dict | None:
-    """Average-based prediction from logged CycleEntry rows. Needs at
-    least 2 entries to compute an average cycle length; returns None
-    otherwise (not enough history to predict anything meaningful)."""
+def set_self_reported_edd(user, last_period_start: date) -> dict:
+    """Patient self-reports their last menstrual period date; we compute
+    and save an estimated EDD (LMP + 280 days) directly onto their
+    linked Patient record. Returns a result dict — caller (the view)
+    decides how to translate 'no_patient_record' into an HTTP status."""
+    from apps.cases.models import Patient
+
+    patient = Patient.objects.filter(patient_user=user).first()
+    if not patient:
+        return {
+            "ok": False,
+            "reason": "no_patient_record",
+            "detail": "No linked patient record — a health worker needs to register you first.",
+        }
+
+    estimated_edd = last_period_start + timedelta(days=PREGNANCY_DAYS)
+    patient.expected_delivery_date = estimated_edd
+    patient.save(update_fields=["expected_delivery_date"])
+
+    return {"ok": True, "expected_delivery_date": estimated_edd}
+
+
+def predict_next_cycle(user) -> dict:
+    """Average-based prediction from logged CycleEntry rows.
+    - 0 entries: nothing to predict from yet.
+    - 1 entry: estimate using a standard 28-day cycle, clearly flagged
+      as an estimate (is_estimated=True) rather than personalized.
+    - 2+ entries: personalized average from the patient's own history.
+    """
     from .models import CycleEntry
 
     entries = list(
         CycleEntry.objects.filter(user=user).order_by("period_start")
     )
-    if len(entries) < 2:
-        return {"has_prediction": False, "entries_logged": len(entries)}
 
-    gaps = [
-        (entries[i].period_start - entries[i - 1].period_start).days
-        for i in range(1, len(entries))
-    ]
-    avg_cycle_length = round(sum(gaps) / len(gaps))
-    last_start = entries[-1].period_start
+    if not entries:
+        return {"has_prediction": False, "entries_logged": 0}
+
+    if len(entries) == 1:
+        last_start = entries[0].period_start
+        avg_cycle_length = DEFAULT_CYCLE_LENGTH_DAYS
+        is_estimated = True
+    else:
+        gaps = [
+            (entries[i].period_start - entries[i - 1].period_start).days
+            for i in range(1, len(entries))
+        ]
+        avg_cycle_length = round(sum(gaps) / len(gaps))
+        last_start = entries[-1].period_start
+        is_estimated = False
+
     predicted_next_start = last_start + timedelta(days=avg_cycle_length)
 
     # Fertile window: standard estimate is ~14 days before the next period,
@@ -75,6 +130,7 @@ def predict_next_cycle(user) -> dict | None:
 
     return {
         "has_prediction": True,
+        "is_estimated": is_estimated,
         "avg_cycle_length_days": avg_cycle_length,
         "last_period_start": last_start,
         "predicted_next_period_start": predicted_next_start,
@@ -92,38 +148,31 @@ def generate_ai_message(patient_name: str, snapshot: dict) -> str:
 
     Falls back to a plain templated message if the AI call fails for
     any reason, so the daily job never silently sends nothing.
-
-    ACTION NEEDED: confirm the actual import path below matches where
-    ai_service.py lives in your repo (apps/ai/ai_service.py assumed —
-    adjust if it's named/located differently).
     """
-    focus = snapshot["daily_focus"]
+    daily = snapshot["daily_content"]
     week = snapshot["current_week"]
-    fallback = (
-        f"Week {week} update: {focus['prompt']} "
-        f"({snapshot['weekly_content']['trimester_title']})"
-    )
+    trimester_title = snapshot["weekly_content"]["trimester_title"]
+    fallback = f"Week {week} update: {daily['lifestyle_tip']} ({trimester_title})"
 
     try:
         from apps.ai.service import AIServiceError, chat
     except ImportError:
         logger.warning(
-            "Could not import apps.ai.ai_service — check the module path "
+            "Could not import apps.ai.service — check the module path "
             "and update the import in generate_ai_message(). Using fallback."
         )
         return fallback
 
     prompt = (
         f"Write ONE short (max 2 sentences) in-app notification for "
-        f"{patient_name}, who is in week {week} of pregnancy "
-        f"({snapshot['weekly_content']['trimester_title']}). "
-        f"Today's focus: {focus['prompt']}"
+        f"{patient_name}, who is in week {week} of pregnancy ({trimester_title}). "
+        f"Today's nutrition tip: {daily['nutrition_tip']} "
+        f"Today's lifestyle tip: {daily['lifestyle_tip']}"
     )
     context = {
         "page": "pregnancy_tracker",
         "current_week": week,
-        "trimester": snapshot["weekly_content"]["trimester_title"],
-        "daily_focus": focus["focus"],
+        "trimester": trimester_title,
         "days_remaining": snapshot["days_remaining"],
     }
 

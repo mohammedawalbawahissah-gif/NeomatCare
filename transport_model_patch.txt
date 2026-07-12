@@ -1,0 +1,27 @@
+Add this field to the existing Driver model in apps/transport/models.py,
+right after `license_number`:
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="driver_profile",
+        limit_choices_to={"role": "driver"},
+        help_text="Login-capable account for this driver, if they have one.",
+    )
+
+Also add this import near the top of the file (it already imports
+`from django.conf import settings` for Vehicle/TransportRequest, so
+Driver just needs to use that same import — no new import line needed
+if settings is already imported above Driver; otherwise add:
+
+    from django.conf import settings
+
+Then generate the migration:
+
+    python manage.py makemigrations transport
+    python manage.py migrate   (or let Render's build command handle it)
+
+This mirrors the exact same pattern already used by
+apps.consultations.models.SpecialistProfile.user — a login account
+optionally linked to a domain profile.

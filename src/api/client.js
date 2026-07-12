@@ -4,8 +4,16 @@
  */
 import axios from 'axios'
 
-export const BASE_URL =
-  import.meta.env.VITE_API_URL || 'https://neomatcare-production.up.railway.app'
+export const BASE_URL = import.meta.env.VITE_API_URL
+
+if (!BASE_URL) {
+  // Fails loudly in dev/build rather than silently hitting a stale backend URL.
+  // Set VITE_API_URL in your .env.local (dev) or in Render's static site
+  // environment variables (production) before building.
+  console.error(
+    'VITE_API_URL is not set. API requests will fail until it is configured.'
+  )
+}
 
 // ── Public client (no auth, no redirect) ─────────────────────────────────────
 export const publicApi = axios.create({

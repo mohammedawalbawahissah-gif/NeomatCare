@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { patientApi, transportApi } from '@/api/client'
+import { patientApi, transportApi, wellnessApi } from '@/api/client'
 import {
   Baby, Star, PhoneCall, Truck, HeartPulse,
   ChevronDown, ChevronUp, Send, Plus, AlertTriangle,
   CheckCircle, Clock, MapPin, Calendar, Phone,
-  User, Mail, Shield, RotateCcw,
+  User, Mail, Shield, RotateCcw, Droplet, Sparkles,
 } from 'lucide-react'
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
@@ -84,6 +84,22 @@ const TRIMESTERS = [
 
 function PregnancyTab() {
   const [open, setOpen] = useState(null)
+  const [snapshot, setSnapshot] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [granularity, setGranularity] = useState('weekly') // daily | weekly | monthly
+
+  useEffect(() => {
+    wellnessApi.myPregnancy()
+      .then(({ data }) => setSnapshot(data))
+      .catch(() => setSnapshot(null))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const GRAN_OPTIONS = [
+    { id: 'daily',   label: 'Today' },
+    { id: 'weekly',  label: 'This Week' },
+    { id: 'monthly', label: 'This Month' },
+  ]
 
   return (
     <div>
@@ -97,6 +113,70 @@ function PregnancyTab() {
           If you experience any danger signs, go to your nearest health facility or use the Transport tab to request a ride.
         </p>
       </div>
+
+      {/* Personalized tracker — only shows if the patient has an EDD on file */}
+      {!loading && snapshot && (
+        <div style={{ ...card, border:'1.5px solid #a5b4fc', background:'linear-gradient(135deg,#eef2ff,#e0e7ff)' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'10px' }}>
+            <Sparkles size={18} color="#4338ca" />
+            <h4 style={{ margin:0, fontSize:'0.95rem', color:'#3730a3', fontWeight:700 }}>Your Personalized Tracker</h4>
+          </div>
+
+          <div style={{ display:'flex', gap:'1.5rem', marginBottom:'12px', flexWrap:'wrap' }}>
+            <div>
+              <p style={{ margin:0, fontSize:'1.4rem', fontWeight:800, color:'#3730a3' }}>Week {snapshot.current_week}</p>
+              <p style={{ margin:0, fontSize:'0.78rem', color:'#4c1d95' }}>{snapshot.weekly_content.trimester_title}</p>
+            </div>
+            <div>
+              <p style={{ margin:0, fontSize:'1.4rem', fontWeight:800, color:'#3730a3' }}>{snapshot.days_remaining}</p>
+              <p style={{ margin:0, fontSize:'0.78rem', color:'#4c1d95' }}>days until due date</p>
+            </div>
+          </div>
+
+          <div style={{ display:'flex', gap:'6px', marginBottom:'12px' }}>
+            {GRAN_OPTIONS.map(g => (
+              <button key={g.id} onClick={() => setGranularity(g.id)}
+                style={{ padding:'6px 12px', borderRadius:'8px', border:'none', cursor:'pointer', fontSize:'0.78rem', fontWeight:600,
+                  background: granularity===g.id ? '#4338ca' : 'white', color: granularity===g.id ? 'white' : '#4338ca' }}>
+                {g.label}
+              </button>
+            ))}
+          </div>
+
+          {granularity === 'daily' && (
+            <p style={{ margin:0, fontSize:'0.875rem', color:'#312e81', lineHeight:1.5 }}>
+              {snapshot.daily_focus.prompt}
+            </p>
+          )}
+          {granularity === 'weekly' && (
+            <div>
+              {snapshot.weekly_content.milestone && (
+                <p style={{ margin:'0 0 8px', fontSize:'0.85rem', color:'#312e81', fontStyle:'italic' }}>
+                  {snapshot.weekly_content.milestone}
+                </p>
+              )}
+              <ul style={{ margin:0, paddingLeft:'1.1rem' }}>
+                {snapshot.weekly_content.tips.slice(0, 3).map((tip, i) => (
+                  <li key={i} style={{ fontSize:'0.85rem', color:'#312e81', marginBottom:'4px' }}>{tip}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {granularity === 'monthly' && (
+            <p style={{ margin:0, fontSize:'0.875rem', color:'#312e81' }}>
+              Month {snapshot.current_month} — {snapshot.monthly_content.trimester_title}. Full guidance below.
+            </p>
+          )}
+        </div>
+      )}
+
+      {!loading && !snapshot && (
+        <div style={{ ...card, background:'#f8fafc', border:'1px dashed #cbd5e1', textAlign:'center' }}>
+          <p style={{ margin:0, fontSize:'0.85rem', color:'#64748b' }}>
+            Your personalized weekly tracker will appear here once your expected delivery date is recorded by your health worker.
+          </p>
+        </div>
+      )}
 
       {TRIMESTERS.map((t, i) => (
         <div key={i} style={{ ...card, border:`1.5px solid ${t.border}`, padding:'0' }}>
@@ -131,6 +211,120 @@ function PregnancyTab() {
           )}
         </div>
       ))}
+    </div>
+  )
+}
+
+// ── Cycle Tracker ─────────────────────────────────────────────────────────────
+function CycleTrackerTab() {
+  const [entries, setEntries] = useState([])
+  const [prediction, setPrediction] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [form, setForm] = useState({ period_start: '', period_end: '', notes: '' })
+  const [submitting, setSubmitting] = useState(false)
+
+  const load = () => {
+    setLoading(true)
+    Promise.all([wellnessApi.listCycleEntries(), wellnessApi.cyclePrediction()])
+      .then(([e, p]) => {
+        setEntries(e.data.results || e.data)
+        setPrediction(p.data)
+      })
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { load() }, [])
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!form.period_start) return
+    setSubmitting(true)
+    try {
+      await wellnessApi.addCycleEntry({
+        period_start: form.period_start,
+        period_end: form.period_end || null,
+        notes: form.notes,
+      })
+      setForm({ period_start: '', period_end: '', notes: '' })
+      load()
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div>
+      <div style={{ ...card, background:'linear-gradient(135deg,#fdf2f8,#fce7f3)', border:'1px solid #f9a8d4' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'8px' }}>
+          <Droplet size={22} color="#831843" />
+          <h3 style={{ margin:0, color:'#831843', fontSize:'1rem', fontWeight:700 }}>Cycle Tracker</h3>
+        </div>
+        <p style={{ margin:0, fontSize:'0.875rem', color:'#831843' }}>
+          Log your period dates to see predictions for your next cycle. This is a simple estimate based on your own history, not medical advice.
+        </p>
+      </div>
+
+      {!loading && prediction && (
+        <div style={card}>
+          <p style={{ margin:'0 0 8px', fontWeight:600, fontSize:'0.85rem', color:'#374151' }}>Prediction</p>
+          {prediction.has_prediction ? (
+            <div style={{ display:'flex', gap:'1.5rem', flexWrap:'wrap' }}>
+              <div>
+                <p style={{ margin:0, fontSize:'1.1rem', fontWeight:700, color:'#831843' }}>
+                  {new Date(prediction.predicted_next_period_start).toLocaleDateString('en-GB', { day:'numeric', month:'short' })}
+                </p>
+                <p style={{ margin:0, fontSize:'0.78rem', color:'#64748b' }}>next period (est.)</p>
+              </div>
+              <div>
+                <p style={{ margin:0, fontSize:'1.1rem', fontWeight:700, color:'#831843' }}>{prediction.avg_cycle_length_days} days</p>
+                <p style={{ margin:0, fontSize:'0.78rem', color:'#64748b' }}>average cycle length</p>
+              </div>
+            </div>
+          ) : (
+            <p style={{ margin:0, fontSize:'0.85rem', color:'#64748b' }}>
+              Log at least 2 periods to get a prediction ({prediction.entries_logged} logged so far).
+            </p>
+          )}
+        </div>
+      )}
+
+      <div style={card}>
+        <p style={{ margin:'0 0 10px', fontWeight:600, fontSize:'0.85rem', color:'#374151' }}>Log a period</p>
+        <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+          <div>
+            <label style={label}>Start date</label>
+            <input type="date" style={input} value={form.period_start}
+              onChange={e => setForm(f => ({ ...f, period_start: e.target.value }))} required />
+          </div>
+          <div>
+            <label style={label}>End date (optional)</label>
+            <input type="date" style={input} value={form.period_end}
+              onChange={e => setForm(f => ({ ...f, period_end: e.target.value }))} />
+          </div>
+          <div>
+            <label style={label}>Notes (optional)</label>
+            <input type="text" style={input} value={form.notes}
+              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any symptoms or notes" />
+          </div>
+          <button type="submit" disabled={submitting} style={btn('#831843')}>
+            <Plus size={15} /> {submitting ? 'Saving…' : 'Log entry'}
+          </button>
+        </form>
+      </div>
+
+      <div style={card}>
+        <p style={{ margin:'0 0 10px', fontWeight:600, fontSize:'0.85rem', color:'#374151' }}>History</p>
+        {entries.length === 0 && <p style={{ margin:0, fontSize:'0.85rem', color:'#94a3b8' }}>No entries logged yet.</p>}
+        {entries.map(e => (
+          <div key={e.id} style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid #f1f5f9' }}>
+            <span style={{ fontSize:'0.85rem', color:'#374151' }}>
+              {new Date(e.period_start).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' })}
+              {e.period_end && ` – ${new Date(e.period_end).toLocaleDateString('en-GB', { day:'numeric', month:'short' })}`}
+            </span>
+            {e.notes && <span style={{ fontSize:'0.78rem', color:'#94a3b8' }}>{e.notes}</span>}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -614,6 +808,7 @@ function MyHealthTab() {
 // ── Root portal ───────────────────────────────────────────────────────────────
 const TABS = [
   { id:'pregnancy', label:'Pregnancy Guide', icon: Baby        },
+  { id:'cycle',     label:'Cycle Tracker',   icon: Droplet     },
   { id:'reviews',   label:'My Reviews',      icon: Star        },
   { id:'oncall',    label:'On-Call',          icon: PhoneCall   },
   { id:'transport', label:'Transport',        icon: Truck       },
@@ -626,6 +821,7 @@ export default function PatientPortalPage() {
 
   const CurrentTab = {
     pregnancy: PregnancyTab,
+    cycle:     CycleTrackerTab,
     reviews:   ReviewsTab,
     oncall:    OnCallTab,
     transport: TransportTab,

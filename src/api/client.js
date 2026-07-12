@@ -109,6 +109,14 @@ export const notificationsApi = {
   markAllRead:   ()     => api.post('/api/notifications/mark-all-read/'),
 }
 
+// ── Wellness (pregnancy tracker + cycle tracker) ───────────────────────────────
+export const wellnessApi = {
+  myPregnancy:      ()     => api.get('/api/wellness/pregnancy/me/'),
+  listCycleEntries: ()     => api.get('/api/wellness/cycle/'),
+  addCycleEntry:    (data) => api.post('/api/wellness/cycle/', data),
+  cyclePrediction:  ()     => api.get('/api/wellness/cycle/prediction/'),
+}
+
 // ── Users ─────────────────────────────────────────────────────────────────────
 export const usersApi = {
   list:   (params)   => api.get('/api/auth/users/', { params }),

@@ -218,13 +218,13 @@ SPECTACULAR_SETTINGS = {
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:5174",
-    "https://neomatcare-frontend-production.up.railway.app",
+    "https://neomatcare-1iik.onrender.com",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:5174",
-    "https://neomatcare-frontend-production.up.railway.app",
+    "https://neomatcare-1iik.onrender.com",
 ]
 
 CORS_ALLOW_HEADERS = [

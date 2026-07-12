@@ -219,12 +219,13 @@ function UserModal({ user, facilities, onClose, onSaved, currentUser }) {
 function DeleteModal({ user, onClose, onDeleted }) {
   const [deleting, setDeleting] = useState(false)
   const [error, setError]       = useState('')
+  const [hardDelete, setHardDelete] = useState(false)
 
   const handleDelete = async () => {
     setDeleting(true)
     setError('')
     try {
-      const response = await usersApi.delete(user.id)
+      const response = await usersApi.delete(user.id, hardDelete ? { hard: true } : undefined)
       // Backend returns 200 for soft-delete (deactivated) or 204 for hard delete.
       // Both mean success — remove the user from the list either way.
       if (response.status === 200 || response.status === 204) {
@@ -234,7 +235,7 @@ function DeleteModal({ user, onClose, onDeleted }) {
       const d = err?.response?.data
       setError(
         (d && typeof d === 'object' ? Object.values(d).flat().join(' ') : null) ||
-        'Failed to deactivate user. Please try again.'
+        `Failed to ${hardDelete ? 'delete' : 'deactivate'} user. Please try again.`
       )
       setDeleting(false)
     }
@@ -248,18 +249,33 @@ function DeleteModal({ user, onClose, onDeleted }) {
         <div style={{ width: '52px', height: '52px', background: '#fff1f2', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
           <Trash2 size={22} color="#c02812" />
         </div>
-        <h3 style={{ margin: '0 0 8px', fontSize: '1.05rem', fontWeight: 600, color: '#0f172a' }}>Deactivate {user.name}?</h3>
-        <p style={{ margin: '0 0 6px', fontSize: '0.875rem', color: '#64748b' }}>
-          The user will lose access immediately. Their clinical records will be preserved.
+        <h3 style={{ margin: '0 0 8px', fontSize: '1.05rem', fontWeight: 600, color: '#0f172a' }}>
+          {hardDelete ? `Permanently delete ${user.name}?` : `Deactivate ${user.name}?`}
+        </h3>
+        {hardDelete ? (
+          <p style={{ margin: '0 0 6px', fontSize: '0.875rem', color: '#64748b' }}>
+            This removes the account row entirely. It fails safely if they created any emergency cases
+            or triage notes — those clinical records can never be deleted out from under a case history.
+          </p>
+        ) : (
+          <p style={{ margin: '0 0 6px', fontSize: '0.875rem', color: '#64748b' }}>
+            The user will lose access immediately. Their clinical records will be preserved.
+          </p>
+        )}
+        <p style={{ margin: '0 0 16px', fontSize: '0.78rem', color: '#94a3b8' }}>
+          {hardDelete ? 'This cannot be undone.' : 'This can be undone by editing the user and setting their status back to Active.'}
         </p>
-        <p style={{ margin: '0 0 20px', fontSize: '0.78rem', color: '#94a3b8' }}>
-          This can be undone by editing the user and setting their status back to Active.
-        </p>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#c02812', marginBottom: '18px', cursor: 'pointer', textAlign: 'left' }}>
+          <input type="checkbox" checked={hardDelete} onChange={e => setHardDelete(e.target.checked)} />
+          Permanently delete instead of deactivating
+        </label>
+
         {error && <p style={{ color: '#c02812', fontSize: '0.82rem', marginBottom: '12px' }}>{error}</p>}
         <div style={{ display: 'flex', gap: '10px' }}>
           <button onClick={onClose} style={{ flex: 1, padding: '10px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '0.875rem', fontWeight: 500, cursor: 'pointer', color: '#475569' }}>Cancel</button>
           <button onClick={handleDelete} disabled={deleting} style={{ flex: 1, padding: '10px', background: deleting ? '#f87171' : '#c02812', color: 'white', border: 'none', borderRadius: '8px', fontSize: '0.875rem', fontWeight: 600, cursor: deleting ? 'not-allowed' : 'pointer' }}>
-            {deleting ? 'Deactivating…' : 'Yes, Deactivate'}
+            {deleting ? (hardDelete ? 'Deleting…' : 'Deactivating…') : (hardDelete ? 'Yes, Permanently Delete' : 'Yes, Deactivate')}
           </button>
         </div>
       </div>

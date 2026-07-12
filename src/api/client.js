@@ -122,7 +122,7 @@ export const usersApi = {
   list:   (params)   => api.get('/api/auth/users/', { params }),
   create: (data)     => api.post('/api/auth/users/', data),
   update: (id, data) => api.patch(`/api/auth/users/${id}/`, data),
-  delete: (id)       => api.delete(`/api/auth/users/${id}/`),
+  delete: (id, params) => api.delete(`/api/auth/users/${id}/`, { params }),
 }
 
 // ── Specialist Search ─────────────────────────────────────────────────────────

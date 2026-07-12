@@ -101,6 +101,14 @@ export const authApi = {
   pushToken:      (token)   => api.post('/api/auth/push-token/', { token }),
 }
 
+// ── Notifications ─────────────────────────────────────────────────────────────
+export const notificationsApi = {
+  list:          ()     => api.get('/api/notifications/'),
+  unreadCount:   ()     => api.get('/api/notifications/unread-count/'),
+  markRead:      (id)   => api.post(`/api/notifications/${id}/read/`),
+  markAllRead:   ()     => api.post('/api/notifications/mark-all-read/'),
+}
+
 // ── Users ─────────────────────────────────────────────────────────────────────
 export const usersApi = {
   list:   (params)   => api.get('/api/auth/users/', { params }),

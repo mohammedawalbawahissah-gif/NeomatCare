@@ -57,6 +57,7 @@ LOCAL_APPS = [
     "apps.transport",
     "apps.consultations",
     "apps.ai",
+    "apps.notifications",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -247,3 +248,7 @@ EMAIL_USE_TLS    = env.bool("EMAIL_USE_TLS", default=True)
 EMAIL_HOST_USER  = env("EMAIL_HOST_USER",  default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 DEFAULT_FROM_EMAIL  = env("DEFAULT_FROM_EMAIL",  default="NeoMatCare <noreply@neomatcare.gh>")
+
+# ── SMS (SMTP — set via environment variables) ──────────────────────────────
+AT_USERNAME = env("neomatcare", default="sandbox")
+AT_API_KEY  = env("atsk_ae86d3e06506a870a7af29c7c0190090f070e2b0767b75b508fb5341bfc80599fb1b4324", default="")

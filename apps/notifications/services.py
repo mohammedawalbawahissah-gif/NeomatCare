@@ -56,7 +56,11 @@ def _send_sms(user, message):
 
 
 def notify(user, notif_type, title, message, url="", related_app="", related_id=""):
-    """Create one notification for `user` and attempt email + SMS delivery."""
+    """Create one notification for `user` and attempt email + SMS delivery
+    — except for patients, who get in-app only. The patient portal has its
+    own real-time AI assistant surface; patients don't need a parallel
+    SMS/email channel for the same events, and it keeps their notification
+    behavior distinct from the operational (staff/driver) side of the app."""
     if user is None:
         return None
 
@@ -69,6 +73,9 @@ def notify(user, notif_type, title, message, url="", related_app="", related_id=
         related_app=related_app,
         related_id=str(related_id) if related_id else "",
     )
+
+    if getattr(user, "role", None) == "patient":
+        return notification
 
     email_ok = _send_email(user, title, message)
     sms_ok = _send_sms(user, message)

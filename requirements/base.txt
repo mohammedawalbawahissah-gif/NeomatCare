@@ -33,3 +33,6 @@ whitenoise==6.7.0
 
 # Gunicorn
 gunicorn==23.0.0
+
+#AFRICASTALKING
+africastalking==1.2.9

@@ -188,6 +188,18 @@ class VerifyOTPView(APIView):
         user.is_verified = True
         user.save(update_fields=['is_active', 'is_verified'])
 
+        # Patients get a linked clinical Patient record immediately — the
+        # patient portal tracker, ANC data, and risk engine all key off this
+        # one record (apps.cases.models.Patient.patient_user). Age is seeded
+        # 0 and filled in by the patient via the tracker's self-report form;
+        # never guess it here.
+        if user.role == 'patient':
+            from apps.cases.models import Patient as ClinicalPatient
+            ClinicalPatient.objects.get_or_create(
+                patient_user=user,
+                defaults={'patient_name': user.name, 'patient_phone_number': user.phone_number, 'age': 0},
+            )
+
         # Issue tokens so user lands straight in the app
         refresh = RefreshToken.for_user(user)
         return Response(
@@ -378,7 +390,7 @@ class UserDetailView(APIView):
 
         hard_delete = request.query_params.get("hard", "").lower() == "true"
         if hard_delete:
-            from django.db import ProtectedError
+            from django.db.models.deletion import ProtectedError
             try:
                 user.delete()
                 return Response(status=status.HTTP_204_NO_CONTENT)

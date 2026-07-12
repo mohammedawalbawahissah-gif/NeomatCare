@@ -29,6 +29,8 @@ class NotificationType(models.TextChoices):
     REVIEW_NEW           = "review_new",           "New Patient Review"
     ANC_VISIT_LOGGED     = "anc_visit_logged",     "ANC Visit Logged"
     CONSENT_RECORDED     = "consent_recorded",     "Consent Recorded"
+    PREGNANCY_UPDATE     = "pregnancy_update",     "Pregnancy Weekly Update"
+    CYCLE_REMINDER       = "cycle_reminder",       "Cycle Reminder"
 
 
 class Notification(models.Model):

@@ -250,6 +250,6 @@ EMAIL_HOST_USER  = env("EMAIL_HOST_USER",  default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 DEFAULT_FROM_EMAIL  = env("DEFAULT_FROM_EMAIL",  default="NeoMatCare <noreply@neomatcare.gh>")
 
-# ── SMS (SMTP — set via environment variables) ──────────────────────────────
-AT_USERNAME = env("neomatcare", default="sandbox")
-AT_API_KEY  = env("atsk_ae86d3e06506a870a7af29c7c0190090f070e2b0767b75b508fb5341bfc80599fb1b4324", default="")
+# ── SMS (Africa's Talking — set via environment variables) ──────────────────
+AT_USERNAME = env("AT_USERNAME", default="sandbox")
+AT_API_KEY  = env("AT_API_KEY", default="")

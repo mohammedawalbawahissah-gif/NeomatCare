@@ -27,3 +27,6 @@ dj-database-url==2.2.0
 
 # Anthropic API (AI referral suggestions, handover briefs, etc.)
 anthropic>=0.69.0
+
+# Whitenoise
+whitenoise==6.7.0

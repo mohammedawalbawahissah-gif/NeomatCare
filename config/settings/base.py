@@ -101,6 +101,8 @@ TEMPLATES = [
 
 
 # ── Database ─────────────────────────────────────────────────────────────
+DB_SCHEMA = env("DB_SCHEMA", default="public")
+
 DATABASES = {
     "default": dj_database_url.config(
         default=os.environ.get("DATABASE_URL"),
@@ -110,6 +112,10 @@ DATABASES = {
 }
 
 DATABASES["default"]["ATOMIC_REQUESTS"] = True
+
+if DB_SCHEMA != "public":
+    DATABASES["default"].setdefault("OPTIONS", {})
+    DATABASES["default"]["OPTIONS"]["options"] = f"-c search_path={DB_SCHEMA}"
 
 
 # ── Custom user model ────────────────────────────────────────────────────

@@ -1,27 +1,29 @@
 services:
   - type: web
-    name: maternal-referral-api
+    name: neomatcare-api
     env: python
-    buildCommand: "pip install -r requirements/prod.txt && python manage.py collectstatic --noinput && python manage.py migrate"
+    buildCommand: "pip install -r requirements/prod.txt && python manage.py create_schema && python manage.py migrate && python manage.py collectstatic --noinput"
     startCommand: "gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120"
     envVars:
       - key: DJANGO_SETTINGS_MODULE
         value: config.settings.prod
       - key: DJANGO_SECRET_KEY
-        generateValue: true
+        sync: false
       - key: DJANGO_DEBUG
         value: "False"
       - key: DJANGO_ALLOWED_HOSTS
         value: ".onrender.com"
       - key: DATABASE_URL
-        fromDatabase:
-          name: maternal-referral-db
-          property: connectionString
+        sync: false
+      - key: DB_SCHEMA
+        value: neomatcare
       - key: ACCESS_TOKEN_LIFETIME_MINUTES
         value: "15"
       - key: REFRESH_TOKEN_LIFETIME_DAYS
         value: "7"
-
-databases:
-  - name: maternal-referral-db
-    plan: free
+      - key: AT_USERNAME
+        sync: false
+      - key: AT_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false

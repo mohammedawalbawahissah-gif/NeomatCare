@@ -24,3 +24,6 @@ django-ratelimit==4.1.0
 django-filter==24.2
 
 dj-database-url==2.2.0
+
+# Anthropic API (AI referral suggestions, handover briefs, etc.)
+anthropic>=0.69.0

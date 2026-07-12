@@ -112,6 +112,7 @@ export const notificationsApi = {
 // ── Wellness (pregnancy tracker + cycle tracker) ───────────────────────────────
 export const wellnessApi = {
   myPregnancy:      ()     => api.get('/api/wellness/pregnancy/me/'),
+  setEdd:           (data) => api.post('/api/wellness/pregnancy/set-edd/', data),
   listCycleEntries: ()     => api.get('/api/wellness/cycle/'),
   addCycleEntry:    (data) => api.post('/api/wellness/cycle/', data),
   cyclePrediction:  ()     => api.get('/api/wellness/cycle/prediction/'),
@@ -122,7 +123,7 @@ export const usersApi = {
   list:   (params)   => api.get('/api/auth/users/', { params }),
   create: (data)     => api.post('/api/auth/users/', data),
   update: (id, data) => api.patch(`/api/auth/users/${id}/`, data),
-  delete: (id, params) => api.delete(`/api/auth/users/${id}/`, { params }),
+  delete: (id)       => api.delete(`/api/auth/users/${id}/`),
 }
 
 // ── Specialist Search ─────────────────────────────────────────────────────────

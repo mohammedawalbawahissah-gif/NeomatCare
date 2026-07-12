@@ -1,9 +1,1 @@
 -r base.txt
-
-# WSGI server for production
-gunicorn==22.0.0
-
-# Secure environment handling
-django-environ==0.11.2
-
-dj-database-url==2.2.0

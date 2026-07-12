@@ -9,20 +9,13 @@ predict_next_cycle() — simple average-based prediction from a
     patient's logged CycleEntry history. Purely arithmetic, not
     medical advice.
 
-generate_ai_message() — ADAPTER. This calls whatever backs your
-    existing /api/ai/chat/ endpoint. I don't have apps/ai's actual
-    services.py/views.py in front of me, so this is written as a
-    clearly-marked placeholder using the Anthropic SDK directly.
-    ACTION NEEDED FROM YOU: if apps/ai already has an internal
-    function (not the HTTP view) that does chat completion, replace
-    the body of generate_ai_message() with a call to that function
-    instead of duplicating the API call here. Look for something
-    like apps/ai/services.py:get_completion() or similar.
+generate_ai_message() — calls the existing apps.ai.service chat()
+    function (role='patient') so pregnancy updates use the same
+    assistant, model, and safety-tuned system prompt as the rest of
+    the app, rather than a separate AI integration.
 """
 import logging
 from datetime import date, timedelta
-
-from django.conf import settings
 
 from .content import get_daily_focus, get_monthly_content, get_weekly_content
 
@@ -92,8 +85,18 @@ def predict_next_cycle(user) -> dict | None:
 
 def generate_ai_message(patient_name: str, snapshot: dict) -> str:
     """Returns a personalized, warm, in-app message for this patient's
-    current pregnancy stage. Falls back to a plain templated message
-    if the AI call fails, so the daily job never silently sends nothing."""
+    current pregnancy stage, using the existing apps.ai chat() assistant
+    (role='patient' already has a tuned system prompt: warm, plain
+    language, never diagnoses, always points back to a health worker
+    for concerns — reused here rather than duplicated).
+
+    Falls back to a plain templated message if the AI call fails for
+    any reason, so the daily job never silently sends nothing.
+
+    ACTION NEEDED: confirm the actual import path below matches where
+    ai_service.py lives in your repo (apps/ai/ai_service.py assumed —
+    adjust if it's named/located differently).
+    """
     focus = snapshot["daily_focus"]
     week = snapshot["current_week"]
     fallback = (
@@ -101,32 +104,35 @@ def generate_ai_message(patient_name: str, snapshot: dict) -> str:
         f"({snapshot['weekly_content']['trimester_title']})"
     )
 
-    api_key = getattr(settings, "ANTHROPIC_API_KEY", "")
-    if not api_key:
+    try:
+        from apps.ai.service import AIServiceError, chat
+    except ImportError:
+        logger.warning(
+            "Could not import apps.ai.ai_service — check the module path "
+            "and update the import in generate_ai_message(). Using fallback."
+        )
         return fallback
 
-    try:
-        import anthropic
+    prompt = (
+        f"Write ONE short (max 2 sentences) in-app notification for "
+        f"{patient_name}, who is in week {week} of pregnancy "
+        f"({snapshot['weekly_content']['trimester_title']}). "
+        f"Today's focus: {focus['prompt']}"
+    )
+    context = {
+        "page": "pregnancy_tracker",
+        "current_week": week,
+        "trimester": snapshot["weekly_content"]["trimester_title"],
+        "daily_focus": focus["focus"],
+        "days_remaining": snapshot["days_remaining"],
+    }
 
-        client = anthropic.Anthropic(api_key=api_key)
-        prompt = (
-            f"You are a warm, encouraging pregnancy assistant inside a maternal "
-            f"health app. Write ONE short (max 2 sentences) in-app notification "
-            f"for {patient_name}, who is in week {week} of pregnancy "
-            f"({snapshot['weekly_content']['trimester_title']}). "
-            f"Focus on: {focus['prompt']} "
-            f"Do not diagnose or give specific medical dosing advice. "
-            f"Be warm and human, not clinical."
-        )
-        response = client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=150,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = "".join(
-            block.text for block in response.content if block.type == "text"
-        ).strip()
-        return text or fallback
+    try:
+        text = chat(messages=[{"role": "user", "content": prompt}], role="patient", context=context)
+        return text.strip() or fallback
+    except AIServiceError:
+        logger.exception("apps.ai chat() returned an error, using fallback template")
+        return fallback
     except Exception:
-        logger.exception("AI message generation failed, using fallback template")
+        logger.exception("Unexpected error calling apps.ai chat(), using fallback template")
         return fallback

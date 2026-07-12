@@ -16,6 +16,15 @@ class Driver(models.Model):
     name = models.CharField(max_length=255)
     phone_number = models.CharField(max_length=20, blank=True)
     license_number = models.CharField(max_length=100, blank=True)
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="driver_profile",
+        limit_choices_to={"role": "driver"},
+        help_text="Login-capable account for this driver, if they have one.",
+    )
+
     is_active = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)

@@ -18,7 +18,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { aiApi } from '@/api/ai'
 import {
   Heart, X, Send, ChevronDown, RefreshCw,
-  Sparkles, AlertCircle, Loader2,
+  Sparkles, AlertCircle, Loader2, Bot,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -162,6 +162,11 @@ export default function AssistantWidget({ context = {} }) {
     }
   }
 
+  const handleQuickPrompt = useCallback((text) => {
+    setInput(text)
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }, [])
+
   const clearChat = () => {
     setMessages([{ role: 'assistant', content: config.greeting }])
     setError('')
@@ -241,7 +246,7 @@ export default function AssistantWidget({ context = {} }) {
           </div>
 
           {/* Quick prompts - role specific */}
-          <QuickPrompts role={role} onSelect={sendMessage} disabled={loading} />
+          <QuickPrompts role={role} onSelect={handleQuickPrompt} disabled={loading} />
 
           {/* Input */}
           <div className="px-3 pb-3">

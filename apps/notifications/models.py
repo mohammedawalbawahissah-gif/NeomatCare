@@ -31,6 +31,8 @@ class NotificationType(models.TextChoices):
     CONSENT_RECORDED     = "consent_recorded",     "Consent Recorded"
     PREGNANCY_UPDATE     = "pregnancy_update",     "Pregnancy Weekly Update"
     CYCLE_REMINDER       = "cycle_reminder",       "Cycle Reminder"
+    STAFF_APPROVAL_NEEDED = "staff_approval_needed", "Staff Approval Needed"
+    STAFF_APPROVED        = "staff_approved",        "Staff Account Approved"
 
 
 class Notification(models.Model):

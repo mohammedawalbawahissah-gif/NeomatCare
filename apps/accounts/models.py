@@ -18,6 +18,7 @@ class UserManager(BaseUserManager):
     def create_superuser(self, email, name, password=None, **extra_fields):
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
+        extra_fields.setdefault("is_approved", True)
         return self.create_user(email, name, password, role="superadmin", **extra_fields)
 
 
@@ -28,7 +29,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         HEALTHWORKER = "health_worker",  "Health Worker"
         SPECIALIST   = "specialist",     "Specialist"
         DRIVER       = "driver",         "Driver"
-        PATIENT      = "patient",        "Patient"
+        PATIENT      = "patient",        "Health Companion"
 
     id       = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name     = models.CharField(max_length=255)
@@ -43,6 +44,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
     is_active  = models.BooleanField(default=True)
     is_staff   = models.BooleanField(default=False)
+    # Staff-role activation gate — separate from is_active (which already
+    # means "OTP verified"). Self-registered staff (health_worker,
+    # facility_admin, specialist, driver) start False and need a Facility
+    # Admin or SuperAdmin to approve them before they can log in. Wellness
+    # Members (patients) and superadmin are auto-approved — see
+    # RegisterSerializer.create() and UserManager.create_superuser().
+    is_approved = models.BooleanField(default=False)
     # Email/phone verified flag — set True after OTP confirmed
     is_verified = models.BooleanField(default=False)
     # Expo push notification token registered by the mobile app.

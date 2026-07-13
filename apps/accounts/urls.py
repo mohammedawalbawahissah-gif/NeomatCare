@@ -3,7 +3,7 @@ from rest_framework_simplejwt.views import TokenRefreshView, TokenBlacklistView
 from .views import (
     RegisterView, VerifyOTPView, ResendOTPView,
     LoginView, MeView, LogoutView,
-    UserListView, UserDetailView,
+    UserListView, UserDetailView, ApproveUserView,
     ChangePasswordView,
     PushTokenView, SpecialistSearchView,
     PatientMeView, PatientServiceReviewListCreateView,
@@ -26,8 +26,9 @@ urlpatterns = [
     path("push-token/",        PushTokenView.as_view(),        name="push-token"),
 
     # ── Admin user management ─────────────────────────────────────────────────
-    path("users/",             UserListView.as_view(),         name="user-list"),
-    path("users/<uuid:pk>/",   UserDetailView.as_view(),       name="user-detail"),
+    path("users/",                    UserListView.as_view(),    name="user-list"),
+    path("users/<uuid:pk>/",          UserDetailView.as_view(),  name="user-detail"),
+    path("users/<uuid:pk>/approve/",  ApproveUserView.as_view(), name="user-approve"),
 
     # ── Specialist search ─────────────────────────────────────────────────────
     path("specialists/search/", SpecialistSearchView.as_view(), name="specialist-search"),

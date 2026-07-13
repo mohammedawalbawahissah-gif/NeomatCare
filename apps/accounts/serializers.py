@@ -18,6 +18,14 @@ OTP_EXEMPT_ROLES = {'superadmin'}
 # instantly with no verification step at all.
 SELF_REGISTERABLE_ROLES = {'health_worker', 'facility_admin', 'specialist', 'driver', 'patient'}
 
+# Self-registered staff roles must be approved by a Facility Admin or
+# SuperAdmin before they can log in — otherwise anyone hitting the public
+# /register/ endpoint could grant themselves facility_admin access to real
+# patient data the moment they verify an OTP. Wellness Members (patients)
+# are excluded here on purpose: they don't manage clinical data, so there's
+# nothing for an admin to gate.
+STAFF_ROLES_REQUIRING_APPROVAL = {'health_worker', 'facility_admin', 'specialist', 'driver'}
+
 
 class RegisterSerializer(serializers.ModelSerializer):
     password       = serializers.CharField(write_only=True, validators=[validate_password])
@@ -84,6 +92,13 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         user = User.objects.create_user(**validated_data)
 
+        # Wellness Members (patients) have nothing for an admin to gate —
+        # auto-approve. Staff roles stay is_approved=False until reviewed
+        # (see STAFF_ROLES_REQUIRING_APPROVAL and VerifyOTPView).
+        if role == 'patient':
+            user.is_approved = True
+            user.save(update_fields=['is_approved'])
+
         # Persist phone number
         if phone_number:
             user.phone_number = phone_number
@@ -120,7 +135,8 @@ class UserSerializer(serializers.ModelSerializer):
         model  = User
         fields = [
             'id', 'name', 'email', 'phone_number', 'role',
-            'facility_id', 'facility_name', 'is_active', 'is_verified', 'created_at',
+            'facility_id', 'facility_name', 'is_active', 'is_verified',
+            'is_approved', 'created_at',
         ]
         read_only_fields = fields
 
@@ -136,6 +152,17 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
     def validate(self, attrs):
         data = super().validate(attrs)
+        # is_active already passed (Django's authenticate() checks it), but
+        # for self-registered staff that only means "OTP verified" — it does
+        # NOT mean a Facility Admin or SuperAdmin has approved them yet.
+        # Wellness Members (patients) and admin-created staff are always
+        # is_approved=True (see serializers.create() above), so this only
+        # ever blocks self-registered staff still awaiting review.
+        if self.user.role in STAFF_ROLES_REQUIRING_APPROVAL and not self.user.is_approved:
+            raise serializers.ValidationError(
+                {'detail': 'Your account is awaiting approval from a Facility Admin or SuperAdmin. '
+                           'You will be able to log in once approved.'}
+            )
         data['user'] = UserSerializer(self.user).data
         return data
 
@@ -161,11 +188,14 @@ class UserCreateSerializer(serializers.ModelSerializer):
         phone_number   = validated_data.pop('phone_number', '')
         license_number = validated_data.pop('license_number', '')
 
-        # Admin-created accounts are active and verified immediately
+        # Admin-created accounts are active and verified immediately — and
+        # auto-approved, since a trusted admin created them directly rather
+        # than through public self-registration (no OTP, no gate needed).
         validated_data.setdefault('is_active', True)
         user = User.objects.create_user(**validated_data)
         user.is_verified = True
-        user.save(update_fields=['is_verified'])
+        user.is_approved = True
+        user.save(update_fields=['is_verified', 'is_approved'])
 
         if facility_id:
             from apps.facilities.models import HealthFacility

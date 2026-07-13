@@ -18,6 +18,7 @@ from .models import User, OTPVerification, PatientServiceReview
 from .serializers import (
     RegisterSerializer, UserSerializer, UserCreateSerializer,
     CustomTokenObtainPairSerializer, PatientServiceReviewSerializer,
+    STAFF_ROLES_REQUIRING_APPROVAL,
 )
 
 logger = logging.getLogger(__name__)
@@ -200,6 +201,45 @@ class VerifyOTPView(APIView):
                 defaults={'patient_name': user.name, 'patient_phone_number': user.phone_number, 'age': 0},
             )
 
+        # Self-registered staff (health_worker, facility_admin, specialist,
+        # driver) need a Facility Admin or SuperAdmin to approve them before
+        # they can log in — otherwise anyone could self-register as
+        # facility_admin and get instant access to real patient data the
+        # moment they verify an OTP. No tokens are issued here; the account
+        # simply isn't usable yet.
+        if user.role in STAFF_ROLES_REQUIRING_APPROVAL and not user.is_approved:
+            try:
+                from apps.notifications.services import notify_many
+                recipients = list(User.objects.filter(role='superadmin', is_active=True))
+                if user.facility_id:
+                    recipients += list(User.objects.filter(
+                        facility_id=user.facility_id, role='facility_admin', is_active=True,
+                    ))
+                notify_many(
+                    recipients,
+                    'staff_approval_needed',
+                    'New staff account awaiting approval',
+                    f'{user.name} registered as {user.get_role_display()} and needs approval before they can log in.',
+                    url='/app/users',
+                    related_app='accounts',
+                    related_id=user.id,
+                )
+            except Exception:
+                logger.exception('Failed to notify admins of pending staff approval for %s', user.email)
+
+            return Response(
+                {
+                    'message': (
+                        'Your account has been verified. It is now awaiting approval from a '
+                        'Facility Admin or SuperAdmin before you can log in — '
+                        'you will be notified once approved.'
+                    ),
+                    'pending_approval': True,
+                    'user': UserSerializer(user).data,
+                },
+                status=status.HTTP_200_OK,
+            )
+
         # Issue tokens so user lands straight in the app
         refresh = RefreshToken.for_user(user)
         return Response(
@@ -358,7 +398,7 @@ class UserDetailView(APIView):
         if err:
             return err
 
-        allowed = {"name", "email", "role", "is_active", "facility"}
+        allowed = {"name", "email", "role", "is_active", "is_approved", "facility"}
         if request.user.role == "facility_admin":
             allowed -= {"facility"}
             if request.data.get("role") == "superadmin":
@@ -414,6 +454,52 @@ class UserDetailView(APIView):
             {"detail": "User deactivated. Their clinical records have been preserved."},
             status=status.HTTP_200_OK,
         )
+
+
+class ApproveUserView(APIView):
+    """
+    POST /api/auth/users/<id>/approve/
+    Approves a pending staff account (health_worker, facility_admin,
+    specialist, driver) so they can log in. A dedicated endpoint rather
+    than folding this into the generic PATCH — approval is a distinct,
+    auditable action, and it's the natural place to notify the user
+    their account is now active.
+    """
+    permission_classes = [IsAuthenticated, IsFacilityAdminOrSuperAdmin]
+
+    def post(self, request, pk):
+        try:
+            user = User.objects.select_related("facility").get(pk=pk)
+        except User.DoesNotExist:
+            return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.user.role == "facility_admin" and user.facility_id != request.user.facility_id:
+            return Response(
+                {"detail": "You can only approve users at your facility."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if user.is_approved:
+            return Response({"detail": "This user is already approved."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.is_approved = True
+        user.save(update_fields=["is_approved"])
+
+        try:
+            from apps.notifications.services import notify
+            notify(
+                user,
+                "staff_approved",
+                "Your account has been approved",
+                "Your account has been approved — you can now log in.",
+                url="/login",
+                related_app="accounts",
+                related_id=user.id,
+            )
+        except Exception:
+            logger.exception("Failed to notify %s of approval", user.email)
+
+        return Response(UserSerializer(user).data)
 
 
 class UserListView(APIView):

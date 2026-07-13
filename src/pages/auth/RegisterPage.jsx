@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import {
   Heart, Eye, EyeOff, ArrowRight, CheckCircle,
   Mail, Lock, User, Shield, Building2, Phone,
-  CreditCard, MessageSquare, RotateCcw, KeyRound,
+  CreditCard, MessageSquare, RotateCcw, KeyRound, Clock,
 } from 'lucide-react'
 
 const inputStyle = {
@@ -266,7 +266,7 @@ function OtpForm({ userId, channel, email, phone, onVerified }) {
 export default function RegisterPage() {
   const navigate = useNavigate()
   const { loginWithTokens } = useAuth()
-  const [step,    setStep]    = useState('details') // 'details' | 'otp' | 'done'
+  const [step,    setStep]    = useState('details') // 'details' | 'otp' | 'pending' | 'done'
   const [otpMeta, setOtpMeta] = useState(null)
 
   const handleDetailsSuccess = (meta) => {
@@ -275,10 +275,29 @@ export default function RegisterPage() {
   }
 
   const handleVerified = (data) => {
+    if (data.pending_approval) {
+      setStep('pending')
+      return
+    }
     // Auto-login with tokens from verify endpoint
     loginWithTokens(data.access, data.refresh, data.user)
     setStep('done')
     setTimeout(() => navigate('/app/dashboard'), 1500)
+  }
+
+  if (step === 'pending') {
+    return (
+      <div style={{ minHeight:'100vh', background:'linear-gradient(135deg,#0f172a,#1e293b,#0a2319)', display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
+        <div style={{ background:'white', borderRadius:'18px', padding:'3rem 2rem', boxShadow:'0 25px 50px rgba(0,0,0,0.4)', textAlign:'center', maxWidth:'420px', width:'100%' }}>
+          <Clock size={52} color="#d97706" style={{ marginBottom:'1rem' }} />
+          <h2 style={{ fontFamily:'Georgia, serif', fontSize:'1.35rem', color:'#0f172a', marginBottom:'0.5rem' }}>Awaiting Approval</h2>
+          <p style={{ color:'#64748b', fontSize:'0.875rem', lineHeight:1.5 }}>
+            Your account has been verified. A Facility Admin or SuperAdmin needs to approve it before
+            you can log in — you'll be able to sign in once that happens.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   if (step === 'done') {

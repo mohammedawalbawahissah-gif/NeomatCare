@@ -93,10 +93,10 @@ export default function LoginPage() {
             <div style={{ flex:1, height:"1px", background:"#e2e8f0" }} />
           </div>
 
-          {/* Patient register link */}
+          {/* Wellness Member register link */}
           <Link to="/patient-register" style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:"8px", padding:"11px", background:"#f0f9f4", border:"1.5px solid #2f9466", borderRadius:"10px", color:"#1a5e42", fontSize:"0.875rem", fontWeight:600, textDecoration:"none" }}>
             <Heart size={15} fill="#2f9466" color="#2f9466" />
-            Patient? Create your patient account
+            Not staff? Create your Health Companion account
           </Link>
         </div>
       </div>

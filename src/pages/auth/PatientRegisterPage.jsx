@@ -237,7 +237,7 @@ export default function PatientRegisterPage() {
             <Heart size={24} color="white" fill="white" />
           </div>
           <h1 style={{ color:'white', fontFamily:'Georgia, serif', fontSize:'1.9rem', margin:0 }}>NeoMatCare</h1>
-          <p style={{ color:'#94a3b8', fontSize:'0.9rem', marginTop:'0.35rem' }}>Patient Portal</p>
+          <p style={{ color:'#94a3b8', fontSize:'0.9rem', marginTop:'0.35rem' }}>Health Companion Portal</p>
         </div>
 
         <div style={{ background:'white', borderRadius:'18px', padding:'2rem', boxShadow:'0 25px 50px rgba(0,0,0,0.4)' }}>

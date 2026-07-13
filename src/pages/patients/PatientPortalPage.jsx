@@ -895,7 +895,7 @@ export default function PatientPortalPage() {
         <h1 style={{ margin:0, fontFamily:'Georgia, serif', fontSize:'1.4rem', color:'#0f172a' }}>
           Welcome, {user?.name?.split(' ')[0]} 👋
         </h1>
-        <p style={{ margin:'4px 0 0', fontSize:'0.875rem', color:'#64748b' }}>Your personal maternity care portal</p>
+        <p style={{ margin:'4px 0 0', fontSize:'0.875rem', color:'#64748b' }}>Your personal wellness &amp; maternity care portal</p>
       </div>
 
       {/* Tab bar */}

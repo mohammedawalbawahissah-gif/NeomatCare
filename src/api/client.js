@@ -124,6 +124,7 @@ export const usersApi = {
   create: (data)     => api.post('/api/auth/users/', data),
   update: (id, data) => api.patch(`/api/auth/users/${id}/`, data),
   delete: (id)       => api.delete(`/api/auth/users/${id}/`),
+  approve: (id)      => api.post(`/api/auth/users/${id}/approve/`),
 }
 
 // ── Specialist Search ─────────────────────────────────────────────────────────

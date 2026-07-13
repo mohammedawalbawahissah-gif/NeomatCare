@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { usersApi, facilitiesApi } from '@/api/client'
 import { PageSpinner, EmptyState, Spinner } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
-import { Users, Search, Building2, Mail, Clock, Plus, X, Save, Trash2, Edit2, KeyRound, Phone, CreditCard } from 'lucide-react'
+import { Users, Search, Building2, Mail, Clock, Plus, X, Save, Trash2, Edit2, KeyRound, Phone, CreditCard, CheckCircle } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import clsx from 'clsx'
 
@@ -346,6 +346,20 @@ export default function UsersPage() {
     setDeleteUser(null)
   }
 
+  const [approvingId, setApprovingId] = useState(null)
+  const handleApprove = async (u) => {
+    setApprovingId(u.id)
+    try {
+      const { data } = await usersApi.approve(u.id)
+      setUsers(prev => prev.map(x => x.id === u.id ? data : x))
+      setAllUsers(prev => prev.map(x => x.id === u.id ? data : x))
+    } catch {
+      setError('Could not approve this user. Please try again.')
+    } finally {
+      setApprovingId(null)
+    }
+  }
+
   return (
     <div className="p-6 space-y-5 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -411,6 +425,9 @@ export default function UsersPage() {
                     {ROLE_LABELS[u.role] || u.role}
                   </span>
                   {!u.is_active && <span className="text-[10px] bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded">Inactive</span>}
+                  {u.role !== 'patient' && u.role !== 'superadmin' && !u.is_approved && (
+                    <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">Pending Approval</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                   <p className="text-xs text-slate-400 flex items-center gap-1"><Mail size={10} /> {u.email}</p>
@@ -422,6 +439,12 @@ export default function UsersPage() {
               {/* Action buttons — only for managers */}
               {canManage && (
                 <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                  {u.role !== 'patient' && u.role !== 'superadmin' && !u.is_approved && (
+                    <button onClick={() => handleApprove(u)} disabled={approvingId === u.id} title="Approve user"
+                      style={{ width: '32px', height: '32px', background: '#fefce8', border: '1px solid #fde68a', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: approvingId === u.id ? 'not-allowed' : 'pointer', color: '#a16207' }}>
+                      <CheckCircle size={14} />
+                    </button>
+                  )}
                   <button onClick={() => setEditUser(u)} title="Edit user"
                     style={{ width: '32px', height: '32px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#207652' }}>
                     <Edit2 size={14} />

@@ -249,6 +249,13 @@ EMAIL_USE_TLS    = env.bool("EMAIL_USE_TLS", default=True)
 EMAIL_HOST_USER  = env("EMAIL_HOST_USER",  default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 DEFAULT_FROM_EMAIL  = env("DEFAULT_FROM_EMAIL",  default="NeoMatCare <noreply@neomatcare.gh>")
+# Without a timeout, a stuck/blocked SMTP connection (e.g. a host that
+# silently drops outbound SMTP) hangs the socket forever. fail_silently=True
+# on send_mail() only swallows exceptions that are actually raised — it does
+# nothing for a hang, so the gunicorn worker eventually times out and gets
+# killed mid-request, which is why callers (e.g. the staff-approval endpoint)
+# saw the whole request fail even though the DB write had already succeeded.
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
 
 # ── SMS (Africa's Talking — set via environment variables) ──────────────────
 AT_USERNAME = env("AT_USERNAME", default="sandbox")

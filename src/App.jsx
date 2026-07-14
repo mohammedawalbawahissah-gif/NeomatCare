@@ -4,7 +4,7 @@ import AppLayout from '@/components/layout/AppLayout'
 
 import LoginPage           from '@/pages/auth/LoginPage'
 import RegisterPage        from '@/pages/auth/RegisterPage'
-import PatientRegisterPage from '@/pages/auth/PatientRegisterPage'
+import WellnessCompanionPage from '@/pages/auth/WellnessCompanionPage'
 import DashboardPage       from '@/pages/DashboardPage'
 
 import CasesPage      from '@/pages/health-worker/CasesPage'
@@ -64,7 +64,7 @@ export default function App() {
           <Route element={<RedirectIfAuth />}>
             <Route path="/login"            element={<LoginPage />} />
             <Route path="/register"         element={<RegisterPage />} />
-            <Route path="/patient-register" element={<PatientRegisterPage />} />
+            <Route path="/patient-register" element={<WellnessCompanionPage />} />
           </Route>
 
           {/* ROOT */}

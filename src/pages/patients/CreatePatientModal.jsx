@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { patientsApi } from '@/api/client'
 import { Modal, Alert, FormField, Spinner } from '@/components/ui'
 import { UserCircle } from 'lucide-react'
+import { useOfflineQueue } from '@/contexts/OfflineQueueContext'
+import { QueueKinds } from '@/utils/offlineQueue'
 
 const inputCls = 'w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-300 bg-white'
 const labelCls = 'block text-sm font-medium text-slate-700 mb-1'
 
-export default function CreatePatientModal({ open, onClose, onCreated }) {
+export default function CreatePatientModal({ open, onClose, onCreated, onQueued }) {
   const [form, setForm] = useState({
     patient_name: '', hospital_id: '', patient_phone_number: '',
     age: '', date_of_birth: '', town: '', blood_group: 'unknown',
@@ -15,6 +16,7 @@ export default function CreatePatientModal({ open, onClose, onCreated }) {
   })
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
+  const { submitOrQueue } = useOfflineQueue()
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
 
@@ -30,8 +32,22 @@ export default function CreatePatientModal({ open, onClose, onCreated }) {
       if (payload.gravida)  payload.gravida = Number(payload.gravida)
       if (payload.parity)   payload.parity  = Number(payload.parity)
       payload.age = Number(payload.age)
-      const { data } = await patientsApi.create(payload)
-      onCreated(data)
+
+      const result = await submitOrQueue({
+        method: 'post',
+        url: '/api/cases/patients/',
+        data: payload,
+        meta: { kind: QueueKinds.PATIENT_CREATE, label: payload.patient_name || 'New patient' },
+      })
+
+      if (result.queued) {
+        // No server id yet — there's no detail page to route to, so just
+        // close the modal. The sync queue indicator + the pending row in
+        // the list are what tell the person it's saved.
+        onQueued?.()
+      } else {
+        onCreated(result.response.data)
+      }
     } catch (err) {
       const d = err?.response?.data
       setError(typeof d === 'object' ? Object.values(d).flat().join(' ') : 'Failed to create patient.')

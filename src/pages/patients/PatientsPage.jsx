@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { patientsApi } from '@/api/client'
 import { PageSpinner, Alert, EmptyState, Spinner } from '@/components/ui'
-import { UserCircle, Plus, Search, AlertTriangle, ShieldCheck } from 'lucide-react'
+import { UserCircle, Plus, Search, AlertTriangle, ShieldCheck, Clock, AlertOctagon } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useOfflineQueue } from '@/contexts/OfflineQueueContext'
+import { QueueKinds, isQueueItemFailed } from '@/utils/offlineQueue'
 import CreatePatientModal from './CreatePatientModal'
 
 const RISK_COLORS = {
@@ -23,8 +25,27 @@ export default function PatientsPage() {
   const [risk,      setRisk]      = useState('')
   const [searching, setSearching] = useState(false)
   const [createOpen,setCreateOpen]= useState(false)
+  const { pending, syncVersion } = useOfflineQueue()
 
   const canCreate = isHealthWorker || isFacilityAdmin || isSuperAdmin
+
+  const queuedPatients = pending
+    .filter(item => item.meta?.kind === QueueKinds.PATIENT_CREATE)
+    .map(item => ({
+      id: `queued:${item.id}`,
+      __queued: true,
+      __failed: isQueueItemFailed(item),
+      __lastError: item.lastError,
+      patient_name: item.data.patient_name,
+      hospital_id: item.data.hospital_id,
+      age: item.data.age,
+      town: item.data.town,
+      risk_level: null,
+      consent_given: false,
+      anc_visits: 0,
+      case_count: 0,
+      last_case_date: null,
+    }))
 
   const load = async (q = '', riskLevel = '') => {
     setSearching(true)
@@ -43,6 +64,10 @@ export default function PatientsPage() {
   }
 
   useEffect(() => { load() }, [])
+
+  // A queued patient disappears from `pending` the instant it syncs —
+  // refetch immediately so the real record replaces it without a gap.
+  useEffect(() => { if (syncVersion > 0) load(search, risk) }, [syncVersion])
 
   const handleSearch = (e) => {
     e.preventDefault()
@@ -91,7 +116,7 @@ export default function PatientsPage() {
 
       {error && <Alert type="error" message={error}/>}
 
-      {loading ? <PageSpinner/> : patients.length === 0 ? (
+      {loading ? <PageSpinner/> : (patients.length === 0 && queuedPatients.length === 0) ? (
         <EmptyState
           icon={UserCircle}
           title="No patients found"
@@ -100,6 +125,27 @@ export default function PatientsPage() {
         />
       ) : (
         <div className="space-y-2">
+          {queuedPatients.map(p => (
+            <div
+              key={p.id}
+              className={`card px-5 py-4 flex items-center gap-4 border-dashed ${p.__failed ? 'border-danger-200 bg-danger-50/30' : 'border-amber-200 bg-amber-50/30'}`}
+            >
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${p.__failed ? 'bg-danger-100' : 'bg-amber-100'}`}>
+                {p.__failed ? <AlertOctagon size={18} className="text-danger-600"/> : <Clock size={18} className="text-amber-600"/>}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-semibold text-slate-800 text-sm truncate">{p.patient_name || 'Unnamed patient'}</p>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase ${p.__failed ? 'bg-danger-100 text-danger-700' : 'bg-amber-100 text-amber-700'}`}>
+                    {p.__failed ? 'Sync failed' : 'Pending sync'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  ID: {p.hospital_id || '—'} · Age {p.age} · {p.town || 'Unknown town'} · not yet on server
+                </p>
+              </div>
+            </div>
+          ))}
           {patients.map(p => (
             <div
               key={p.id}
@@ -138,6 +184,7 @@ export default function PatientsPage() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onCreated={(p) => { setCreateOpen(false); navigate(`/app/patients/${p.id}`) }}
+        onQueued={() => setCreateOpen(false)}
       />
     </div>
   )

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import AssistantWidget from '@/components/ai/AssistantWidget'
+import SyncQueueIndicator from '@/components/sync/SyncQueueIndicator'
 
 const NAV_BY_ROLE = {
   health_worker: [
@@ -260,6 +261,7 @@ export default function AppLayout({ children }) {
             <Menu size={20} />
           </button>
           <div className="flex-1" />
+          <SyncQueueIndicator />
           <div className="relative" ref={notifRef}>
             <button
               onClick={toggleNotifications}

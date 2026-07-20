@@ -5,9 +5,12 @@ import { PageSpinner, Alert, DangerSignList, Modal, Spinner, FormField } from '@
 import TriageAIPanel from '@/components/ai/TriageAIPanel'
 import HandoverBriefPanel from '@/components/ai/HandoverBriefPanel'
 import TransportRecommendPanel from '@/components/ai/TransportRecommendPanel'
-import { ArrowLeft, Plus, ArrowRightLeft, Truck, Video, MapPin, Activity, Pencil, CheckCircle, RefreshCw, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Plus, ArrowRightLeft, Truck, Video, MapPin, Activity, Pencil, CheckCircle, RefreshCw, ChevronRight, Clock, AlertOctagon } from 'lucide-react'
 import { format } from 'date-fns'
 import { useAuth } from '@/contexts/AuthContext'
+import { useOfflineQueue } from '@/contexts/OfflineQueueContext'
+import { QueueKinds, isQueueItemFailed, MAX_RETRIES } from '@/utils/offlineQueue'
+import { cachedFetch } from '@/utils/cachedFetch'
 
 const ALL_DANGER_SIGNS = [
   'PPH','APH','RUPTURED_UTERUS','ECLAMPSIA','SEVERE_PRE_ECLAMPSIA',
@@ -214,6 +217,8 @@ function ReferralModal({ open, onClose, caseData }) {
   const [transportNotes, setTransportNotes]   = useState('')
   const [assigningTransport, setAssigningTransport] = useState(false)
   const [transportError, setTransportError]   = useState('')
+  const { submitOrQueue } = useOfflineQueue()
+  const [facilitiesFromCache, setFacilitiesFromCache] = useState(false)
 
   // Reset on open/close
   useEffect(() => {
@@ -248,8 +253,11 @@ function ReferralModal({ open, onClose, caseData }) {
     if (allFacilities.length > 0) return
     setFacilitiesLoading(true)
     try {
-      const { data } = await facilitiesApi.list()
+      // Cached so manual facility selection still works with no signal —
+      // without this, offline "Manual Selection" would offer nothing to pick.
+      const { data, fromCache } = await cachedFetch('facilities_list', () => facilitiesApi.list().then(r => r.data))
       setAllFacilities(Array.isArray(data) ? data : data.results || [])
+      setFacilitiesFromCache(fromCache)
     } catch {}
     finally { setFacilitiesLoading(false) }
   }
@@ -262,20 +270,33 @@ function ReferralModal({ open, onClose, caseData }) {
     if (!selected) return
     setCreating(true); setSaveError('')
     try {
-      const { data } = await referralsApi.create({
+      const payload = {
         emergency_case_id:        caseData.id,
         receiving_facility_id:    selected.id,
         ...(suggestion?.engine_version && { engine_version: suggestion.engine_version }),
         ...(engineRecId               && { engine_recommendation_id: engineRecId }),
         ...(isOverride                && { override_reason: overrideReason }),
+      }
+      const result = await submitOrQueue({
+        method: 'post',
+        url: '/api/referrals/create/',
+        data: payload,
+        meta: { kind: QueueKinds.REFERRAL_CREATE, label: `Referral to ${selected.name}`, caseId: caseData.id },
       })
-      setCreatedReferral(data)
-      setStep('transport')
-      setVehiclesLoading(true)
-      transportApi.vehicles.available()
-        .then(({ data: vData }) => setVehicles(Array.isArray(vData) ? vData : vData.results || []))
-        .catch(() => {})
-        .finally(() => setVehiclesLoading(false))
+      if (result.queued) {
+        // No server id yet, so there's no referral to link a transport
+        // request to — that has to wait until this syncs. Say so plainly
+        // instead of silently skipping the transport step.
+        setStep('queued')
+      } else {
+        setCreatedReferral(result.response.data)
+        setStep('transport')
+        setVehiclesLoading(true)
+        transportApi.vehicles.available()
+          .then(({ data: vData }) => setVehicles(Array.isArray(vData) ? vData : vData.results || []))
+          .catch(() => {})
+          .finally(() => setVehiclesLoading(false))
+      }
     } catch (err) {
       const d = err?.response?.data
       setSaveError(typeof d === 'object' ? Object.values(d).flat().join(' ') : 'Failed to create referral.')
@@ -422,6 +443,9 @@ function ReferralModal({ open, onClose, caseData }) {
           <div className="space-y-3">
             <input value={facilitySearch} onChange={e => setFacilitySearch(e.target.value)}
               className="input-field" placeholder="Search by facility name or level…" autoFocus/>
+            {facilitiesFromCache && (
+              <p className="text-xs text-amber-600">Showing facilities saved from your last connection — may be outdated.</p>
+            )}
 
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {facilitiesLoading && <div className="flex justify-center py-6"><Spinner size={20} className="text-brand-500"/></div>}
@@ -454,6 +478,25 @@ function ReferralModal({ open, onClose, caseData }) {
         )}
 
       </div>
+
+        {/* ── Queued-offline confirmation ── */}
+        {step === 'queued' && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-200">
+              <Clock size={18} className="text-amber-600 shrink-0"/>
+              <div>
+                <p className="text-sm font-semibold text-amber-800">Referral saved on this device</p>
+                <p className="text-xs text-amber-600 mt-0.5">To: {selected?.name} — no connection right now</p>
+              </div>
+            </div>
+            <p className="text-sm text-slate-500">
+              It will be sent to the server automatically once you're back online, and you can assign transport for it after that.
+            </p>
+            <div className="flex gap-3 pt-2 border-t border-slate-100">
+              <button type="button" onClick={onClose} className="btn-primary flex-1 justify-center">Done</button>
+            </div>
+          </div>
+        )}
 
         {/* ── Transport assignment step ── */}
         {step === 'transport' && (
@@ -719,6 +762,11 @@ function ReferralSection({ caseId, canManage }) {
   const [referral, setReferral]         = useState(null)
   const [loading, setLoading]           = useState(true)
   const [statusModal, setStatusModal]   = useState(false)
+  const { pending, syncVersion } = useOfflineQueue()
+
+  const queuedReferral = pending.find(
+    item => item.meta?.kind === QueueKinds.REFERRAL_CREATE && item.meta?.caseId === caseId
+  )
 
   const fetchReferral = useCallback(() => {
     referralsApi.list()
@@ -733,15 +781,36 @@ function ReferralSection({ caseId, canManage }) {
   }, [caseId])
 
   useEffect(() => { fetchReferral() }, [fetchReferral])
+  useEffect(() => { if (syncVersion > 0) fetchReferral() }, [syncVersion])
 
   if (loading) return <div className="card px-5 py-4"><p className="text-xs text-slate-400">Loading referral…</p></div>
 
-  if (!referral) return (
-    <div className="card px-5 py-4">
-      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Referral</p>
-      <p className="text-sm text-slate-500">No referral created yet. Use the <strong>Refer</strong> button above.</p>
-    </div>
-  )
+  if (!referral) {
+    if (queuedReferral) {
+      const failed = isQueueItemFailed(queuedReferral)
+      return (
+        <div className={`card px-5 py-4 border-dashed ${failed ? 'border-danger-200 bg-danger-50/30' : 'border-amber-200 bg-amber-50/30'}`}>
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Referral</p>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase flex items-center gap-1 ${failed ? 'bg-danger-100 text-danger-700' : 'bg-amber-100 text-amber-700'}`}>
+              {failed ? <AlertOctagon size={10}/> : <Clock size={10}/>} {failed ? 'Sync failed' : 'Pending sync'}
+            </span>
+          </div>
+          <p className="text-sm text-slate-500">
+            {failed
+              ? `Saved on this device but couldn't reach the server after ${MAX_RETRIES} tries: ${queuedReferral.lastError || 'unknown error'}. Use the sync icon in the header to retry or discard.`
+              : `${queuedReferral.meta?.label || 'Referral'} is saved on this device and will be sent once back online. Transport can be assigned after it syncs.`}
+          </p>
+        </div>
+      )
+    }
+    return (
+      <div className="card px-5 py-4">
+        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Referral</p>
+        <p className="text-sm text-slate-500">No referral created yet. Use the <strong>Refer</strong> button above.</p>
+      </div>
+    )
+  }
 
   const validNext  = VALID_TRANSITIONS[referral.status] || []
   const isTerminal = validNext.length === 0

@@ -7,10 +7,12 @@ import ANCAnomalyPanel from '@/components/ai/ANCAnomalyPanel'
 import {
   ArrowLeft, UserCircle, Plus, Shield, ShieldOff, ShieldCheck,
   AlertTriangle, Calendar, Activity, ClipboardList, RefreshCw,
-  Mail, Phone, Users, Edit2, CheckCircle, Stethoscope, Globe
+  Mail, Phone, Users, Edit2, CheckCircle, Stethoscope, Globe, Clock, AlertOctagon
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { useAuth } from '@/contexts/AuthContext'
+import { useOfflineQueue } from '@/contexts/OfflineQueueContext'
+import { QueueKinds, isQueueItemFailed } from '@/utils/offlineQueue'
 
 const inputCls = 'w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-300 bg-white'
 const labelCls = 'block text-sm font-medium text-slate-700 mb-1'
@@ -32,6 +34,7 @@ function AddANCVisitModal({ open, onClose, patientId, onSaved }) {
   const [form, setForm] = useState({ visit_date: '', gestational_age_weeks: '', weight_kg: '', bp_systolic: '', bp_diastolic: '', fetal_heart_rate: '', fundal_height_cm: '', notes: '', concerns: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
+  const { submitOrQueue } = useOfflineQueue()
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
 
@@ -48,8 +51,13 @@ function AddANCVisitModal({ open, onClose, patientId, onSaved }) {
       if (form.fundal_height_cm) payload.fundal_height_cm = Number(form.fundal_height_cm)
       if (form.notes)    payload.notes    = form.notes
       if (form.concerns) payload.concerns = form.concerns
-      const { data } = await patientsApi.ancVisits.create(patientId, payload)
-      onSaved(data)
+      await submitOrQueue({
+        method: 'post',
+        url: `/api/cases/patients/${patientId}/anc-visits/`,
+        data: payload,
+        meta: { kind: QueueKinds.ANC_VISIT_CREATE, label: `ANC visit — ${form.visit_date}`, patientId },
+      })
+      onSaved()
       setForm({ visit_date:'',gestational_age_weeks:'',weight_kg:'',bp_systolic:'',bp_diastolic:'',fetal_heart_rate:'',fundal_height_cm:'',notes:'',concerns:'' })
     } catch (err) {
       const d = err?.response?.data
@@ -217,8 +225,27 @@ export default function PatientDetailPage() {
   const [consentModal,setConsentModal]= useState(false)
   const [portalModal, setPortalModal] = useState(false)
   const [computing,   setComputing]   = useState(false)
+  const { pending, syncVersion } = useOfflineQueue()
 
   const canManage = isHealthWorker || isFacilityAdmin || isSuperAdmin
+
+  const queuedAncVisits = pending
+    .filter(item => item.meta?.kind === QueueKinds.ANC_VISIT_CREATE && item.meta?.patientId === id)
+    .map(item => ({
+      id: `queued:${item.id}`,
+      __queued: true,
+      __failed: isQueueItemFailed(item),
+      visit_date: item.data.visit_date,
+      gestational_age_weeks: item.data.gestational_age_weeks,
+      bp_systolic: item.data.bp_systolic,
+      bp_diastolic: item.data.bp_diastolic,
+      fetal_heart_rate: item.data.fetal_heart_rate,
+      weight_kg: item.data.weight_kg,
+      concerns: item.data.concerns,
+      notes: item.data.notes,
+      facility_name: null,
+      conducted_by_name: null,
+    }))
 
   const load = useCallback(async () => {
     try {
@@ -234,6 +261,7 @@ export default function PatientDetailPage() {
   }, [id])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => { if (syncVersion > 0) load() }, [syncVersion])
 
   const handleComputeRisk = async () => {
     setComputing(true)
@@ -251,7 +279,7 @@ export default function PatientDetailPage() {
   const p = patient
   const TABS = [
     { id: 'overview', label: 'Overview' },
-    { id: 'anc',      label: `ANC Visits (${p.anc_visit_log?.length || 0})` },
+    { id: 'anc',      label: `ANC Visits (${(p.anc_visit_log?.length || 0) + queuedAncVisits.length})` },
     { id: 'cases',    label: `Cases (${cases.length})` },
     { id: 'consent',  label: 'Consent & Privacy' },
   ]
@@ -389,14 +417,14 @@ export default function PatientDetailPage() {
             patientId={p.id}
             visitCount={p.anc_visit_log?.length || 0}
           />
-          {!p.anc_visit_log?.length ? (
+          {!p.anc_visit_log?.length && !queuedAncVisits.length ? (
             <div className="card px-5 py-8 text-center">
               <Stethoscope size={28} className="text-slate-300 mx-auto mb-2"/>
               <p className="text-sm text-slate-400">No ANC visits recorded yet.</p>
             </div>
           ) : (
-            p.anc_visit_log.map(v => (
-              <div key={v.id} className="card px-5 py-4">
+            [...queuedAncVisits, ...(p.anc_visit_log || [])].map(v => (
+              <div key={v.id} className={`card px-5 py-4 ${v.__queued ? (v.__failed ? 'border-dashed border-danger-200 bg-danger-50/30' : 'border-dashed border-amber-200 bg-amber-50/30') : ''}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-slate-800">
@@ -405,11 +433,17 @@ export default function PatientDetailPage() {
                     </p>
                     <p className="text-xs text-slate-400 mt-0.5">{v.facility_name || 'No facility'} · {v.conducted_by_name || 'Unknown'}</p>
                   </div>
-                  <div className="flex gap-4 text-right text-xs text-slate-500">
-                    {v.bp_systolic && <span>BP {v.bp_systolic}/{v.bp_diastolic}</span>}
-                    {v.weight_kg   && <span>{v.weight_kg} kg</span>}
-                    {v.fetal_heart_rate && <span>FHR {v.fetal_heart_rate}</span>}
-                  </div>
+                  {v.__queued ? (
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase flex items-center gap-1 h-fit shrink-0 ${v.__failed ? 'bg-danger-100 text-danger-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {v.__failed ? <AlertOctagon size={10}/> : <Clock size={10}/>} {v.__failed ? 'Sync failed' : 'Pending sync'}
+                    </span>
+                  ) : (
+                    <div className="flex gap-4 text-right text-xs text-slate-500">
+                      {v.bp_systolic && <span>BP {v.bp_systolic}/{v.bp_diastolic}</span>}
+                      {v.weight_kg   && <span>{v.weight_kg} kg</span>}
+                      {v.fetal_heart_rate && <span>FHR {v.fetal_heart_rate}</span>}
+                    </div>
+                  )}
                 </div>
                 {v.concerns && <p className="mt-2 text-xs text-amber-700 bg-amber-50 px-3 py-1.5 rounded-lg">{v.concerns}</p>}
                 {v.notes    && <p className="mt-1 text-xs text-slate-500">{v.notes}</p>}

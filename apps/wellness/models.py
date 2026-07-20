@@ -43,6 +43,28 @@ class CycleEntry(models.Model):
         return f"Cycle entry for {self.user_id} starting {self.period_start}"
 
 
+class CycleTrackerState(models.Model):
+    """One row per patient-role user with logged CycleEntry history.
+    Records the predicted next-period start date we last sent a
+    reminder for, so send_cycle_updates never re-notifies for the
+    same predicted cycle twice on consecutive daily runs."""
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="cycle_tracker_state",
+        limit_choices_to={"role": "patient"},
+    )
+    last_notified_date = models.DateField(null=True, blank=True)
+    last_notified_predicted_start = models.DateField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "wellness_cycle_tracker_state"
+
+    def __str__(self):
+        return f"Cycle tracker state for user {self.user_id}"
+
+
 class PregnancyTrackerState(models.Model):
     patient = models.OneToOneField(
         "cases.Patient",

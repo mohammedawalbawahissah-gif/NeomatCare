@@ -1,1 +1,38 @@
--r requirements/prod.txt
+# Core framework
+Django==5.0.4
+djangorestframework==3.15.1
+
+# PostgreSQL adapter
+psycopg2-binary==2.9.12
+
+# JWT authentication
+djangorestframework-simplejwt==5.3.1
+
+# Environment variable management
+django-environ==0.11.2
+
+# CORS headers (needed when a frontend connects)
+django-cors-headers==4.3.1
+
+# API documentation
+drf-spectacular==0.27.2
+
+# Rate limiting
+django-ratelimit==4.1.0
+
+# Filtering support for DRF querysets
+django-filter==24.2
+
+dj-database-url==2.2.0
+
+# Anthropic API (AI referral suggestions, handover briefs, etc.)
+anthropic>=0.69.0
+
+# Whitenoise
+whitenoise==6.7.0
+
+# Gunicorn
+gunicorn==23.0.0
+
+#AFRICASTALKING
+africastalking==1.2.9

@@ -652,7 +652,12 @@ function CreateCaseModal({ open, onClose, onCreated }) {
               </div>
               <div style={{marginBottom:'12px'}}>
                 <label style={labelStyle}>Obstetric History</label>
-                <textarea rows={2} value={form.obstetric_history} onChange={set('obstetric_history')} placeholder="Relevant prior complications or surgeries..." style={{...inputStyle, resize:'vertical'}}/>
+                <div style={{display:'flex', gap:'8px', alignItems:'flex-start'}}>
+                  <textarea rows={2} value={form.obstetric_history} onChange={set('obstetric_history')} placeholder="Relevant prior complications or surgeries..." style={{...inputStyle, resize:'vertical', flex:1}}/>
+                  <div style={{paddingTop:'6px'}}>
+                    <DictateButton onResult={(text) => setForm(f => ({ ...f, obstetric_history: (f.obstetric_history ? f.obstetric_history + ' ' : '') + text }))} />
+                  </div>
+                </div>
               </div>
 
               <p style={sectionStyle}>Clinical</p>

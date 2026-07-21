@@ -12,6 +12,7 @@ import { useOfflineQueue } from '@/contexts/OfflineQueueContext'
 import { QueueKinds, isQueueItemFailed, MAX_RETRIES } from '@/utils/offlineQueue'
 import { cachedFetch } from '@/utils/cachedFetch'
 import SpeakButton from '@/components/voice/SpeakButton'
+import DictateButton from '@/components/voice/DictateButton'
 
 const ALL_DANGER_SIGNS = [
   'PPH','APH','RUPTURED_UTERUS','ECLAMPSIA','SEVERE_PRE_ECLAMPSIA',
@@ -344,8 +345,11 @@ function ReferralModal({ open, onClose, caseData }) {
       )}
       {isOverride && (
         <FormField label="Override Reason" required hint="Required when selecting a different facility than recommended">
-          <textarea rows={2} value={overrideReason} onChange={e => setOverrideReason(e.target.value)}
-            className="input-field resize-none" placeholder="Explain why you're overriding the recommendation…"/>
+          <div className="flex gap-2 items-start">
+            <textarea rows={2} value={overrideReason} onChange={e => setOverrideReason(e.target.value)}
+              className="input-field resize-none flex-1" placeholder="Explain why you're overriding the recommendation…"/>
+            <DictateButton onResult={(text) => setOverrideReason(v => (v ? v + ' ' : '') + text)} className="mt-1" />
+          </div>
         </FormField>
       )}
       {saveError && <Alert type="error" message={saveError}/>}

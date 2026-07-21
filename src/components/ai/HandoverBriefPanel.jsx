@@ -14,6 +14,7 @@ import { useState } from 'react'
 import { aiApi } from '@/api/ai'
 import { Sparkles, Loader2, AlertCircle, FileText, Copy, Check, RefreshCw } from 'lucide-react'
 import clsx from 'clsx'
+import SpeakButton from '@/components/voice/SpeakButton'
 
 export default function HandoverBriefPanel({ referralId, caseId, compact = false }) {
   const [result,  setResult]  = useState(null)
@@ -43,6 +44,11 @@ export default function HandoverBriefPanel({ referralId, caseId, compact = false
     } catch {}
   }
 
+  const speakableText = result && [
+    result.brief,
+    result.immediate_actions?.length ? `Immediate actions: ${result.immediate_actions.join('. ')}.` : '',
+  ].filter(Boolean).join(' ')
+
   if (compact && !result) {
     return (
       <button
@@ -65,6 +71,7 @@ export default function HandoverBriefPanel({ referralId, caseId, compact = false
       <div className="flex items-center gap-2.5 px-4 py-3 bg-purple-700">
         <FileText size={15} className="text-purple-200" />
         <span className="text-white text-sm font-semibold flex-1">AI Clinical Handover Brief</span>
+        {result && <SpeakButton text={speakableText} className="!bg-purple-800 !text-purple-100 hover:!bg-purple-900" />}
         {result && (
           <button
             onClick={generate}

@@ -13,6 +13,7 @@ import { format } from 'date-fns'
 import { useAuth } from '@/contexts/AuthContext'
 import { useOfflineQueue } from '@/contexts/OfflineQueueContext'
 import { QueueKinds, isQueueItemFailed } from '@/utils/offlineQueue'
+import DictateButton from '@/components/voice/DictateButton'
 
 const inputCls = 'w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-300 bg-white'
 const labelCls = 'block text-sm font-medium text-slate-700 mb-1'
@@ -80,8 +81,20 @@ function AddANCVisitModal({ open, onClose, patientId, onSaved }) {
           <div><label className={labelCls}>BP Diastolic</label><input type="number" className={inputCls} value={form.bp_diastolic} onChange={set('bp_diastolic')}/></div>
           <div><label className={labelCls}>Fetal HR (bpm)</label><input type="number" className={inputCls} value={form.fetal_heart_rate} onChange={set('fetal_heart_rate')}/></div>
           <div><label className={labelCls}>Fundal Height (cm)</label><input type="number" className={inputCls} value={form.fundal_height_cm} onChange={set('fundal_height_cm')} step="0.1"/></div>
-          <div className="col-span-2"><label className={labelCls}>Notes</label><textarea rows={2} className={inputCls+' resize-none'} value={form.notes} onChange={set('notes')}/></div>
-          <div className="col-span-2"><label className={labelCls}>Concerns</label><textarea rows={2} className={inputCls+' resize-none'} value={form.concerns} onChange={set('concerns')} placeholder="Any clinical concerns noted…"/></div>
+          <div className="col-span-2">
+            <label className={labelCls}>Notes</label>
+            <div className="flex gap-2 items-start">
+              <textarea rows={2} className={inputCls+' resize-none flex-1'} value={form.notes} onChange={set('notes')}/>
+              <DictateButton onResult={(text) => setForm(f => ({ ...f, notes: (f.notes ? f.notes + ' ' : '') + text }))} className="mt-1" />
+            </div>
+          </div>
+          <div className="col-span-2">
+            <label className={labelCls}>Concerns</label>
+            <div className="flex gap-2 items-start">
+              <textarea rows={2} className={inputCls+' resize-none flex-1'} value={form.concerns} onChange={set('concerns')} placeholder="Any clinical concerns noted…"/>
+              <DictateButton onResult={(text) => setForm(f => ({ ...f, concerns: (f.concerns ? f.concerns + ' ' : '') + text }))} className="mt-1" />
+            </div>
+          </div>
         </div>
         <div className="flex gap-3 pt-2 border-t border-slate-100">
           <button onClick={onClose} className="btn-secondary flex-1 justify-center">Cancel</button>

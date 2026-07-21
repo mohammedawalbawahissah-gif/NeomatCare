@@ -36,3 +36,12 @@ gunicorn==23.0.0
 
 #AFRICASTALKING
 africastalking==1.2.9
+
+# GhanaNLP Khaya AI (local-language STT/TTS) — third-party maintained client
+# wrapping the official Khaya API. Pinned to the latest published release;
+# verify against https://translation.ghananlp.org/ docs if it stops working.
+ghana-nlp==0.1.5
+
+# Used directly for the Google Cloud STT fallback (Hausa) — no official
+# lightweight client for our use case, raw REST is simplest here.
+requests>=2.31.0

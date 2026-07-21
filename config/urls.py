@@ -29,4 +29,5 @@ urlpatterns = [
     path("api/ai/",            include("apps.ai.urls")),
     path("api/notifications/", include("apps.notifications.urls")),
     path("api/wellness/",      include("apps.wellness.urls")),
+    path("api/voice/",         include("apps.voice.urls")),
 ]

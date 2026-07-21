@@ -10,13 +10,13 @@ SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 
 CORS_ALLOWED_ORIGINS = [
-    'https://neomatcare-frontend-production.up.railway.app',
     'https://neomatcare-1iik.onrender.com',
 ]
+
 CSRF_TRUSTED_ORIGINS = [
-    'https://neomatcare-frontend-production.up.railway.app',
     'https://neomatcare-1iik.onrender.com',
 ]
+
 CORS_ALLOW_CREDENTIALS = True
 
 LOGGING = {

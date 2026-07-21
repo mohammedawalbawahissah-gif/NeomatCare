@@ -59,6 +59,7 @@ LOCAL_APPS = [
     "apps.ai",
     "apps.notifications",
     "apps.wellness",
+    "apps.voice",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -249,14 +250,17 @@ EMAIL_USE_TLS    = env.bool("EMAIL_USE_TLS", default=True)
 EMAIL_HOST_USER  = env("EMAIL_HOST_USER",  default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 DEFAULT_FROM_EMAIL  = env("DEFAULT_FROM_EMAIL",  default="NeoMatCare <noreply@neomatcare.gh>")
-# Without a timeout, a stuck/blocked SMTP connection (e.g. a host that
-# silently drops outbound SMTP) hangs the socket forever. fail_silently=True
-# on send_mail() only swallows exceptions that are actually raised — it does
-# nothing for a hang, so the gunicorn worker eventually times out and gets
-# killed mid-request, which is why callers (e.g. the staff-approval endpoint)
-# saw the whole request fail even though the DB write had already succeeded.
-EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
 
 # ── SMS (Africa's Talking — set via environment variables) ──────────────────
 AT_USERNAME = env("AT_USERNAME", default="sandbox")
 AT_API_KEY  = env("AT_API_KEY", default="")
+
+# ── Voice (GhanaNLP Khaya AI — local-language STT/TTS) ───────────────────────
+# Sign up at https://translation.ghananlp.org/ to get a key. Free tier is
+# 100 calls — enough for development/demo, not production volume.
+KHAYA_API_KEY = env("KHAYA_API_KEY", default="")
+
+# ── Voice (Google Cloud Speech-to-Text — Hausa fallback) ─────────────────────
+# Optional. Only used for languages Khaya doesn't cover (currently: Hausa).
+# Leave unset to disable Hausa dictation without affecting anything else.
+GOOGLE_CLOUD_STT_API_KEY = env("GOOGLE_CLOUD_STT_API_KEY", default="")

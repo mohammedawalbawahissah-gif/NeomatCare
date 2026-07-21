@@ -10,11 +10,9 @@ system should never lose the in-app alert because an SMS gateway
 timed out.
 """
 import logging
-import threading
 
 from django.conf import settings
 from django.core.mail import send_mail
-from django.db import close_old_connections
 
 from .models import Notification
 
@@ -57,25 +55,6 @@ def _send_sms(user, message):
         return False
 
 
-def _deliver(notification_id, user, title, message):
-    """Runs in a background thread so a slow/blocked SMTP or SMS gateway
-    never holds up the HTTP request that triggered the notification —
-    EMAIL_TIMEOUT bounds how long any single attempt can take, and this
-    thread closes its own DB connection since Django doesn't clean up
-    connections opened outside the normal request/response cycle."""
-    try:
-        email_ok = _send_email(user, title, message)
-        sms_ok = _send_sms(user, message)
-        if email_ok or sms_ok:
-            Notification.objects.filter(pk=notification_id).update(
-                email_sent=email_ok, sms_sent=sms_ok,
-            )
-    except Exception:
-        logger.exception("Background notification delivery failed for %s", getattr(user, "email", user))
-    finally:
-        close_old_connections()
-
-
 def notify(user, notif_type, title, message, url="", related_app="", related_id=""):
     """Create one notification for `user` and attempt email + SMS delivery
     — except for patients, who get in-app only. The patient portal has its
@@ -98,11 +77,13 @@ def notify(user, notif_type, title, message, url="", related_app="", related_id=
     if getattr(user, "role", None) == "patient":
         return notification
 
-    threading.Thread(
-        target=_deliver,
-        args=(notification.id, user, title, message),
-        daemon=True,
-    ).start()
+    email_ok = _send_email(user, title, message)
+    sms_ok = _send_sms(user, message)
+
+    if email_ok or sms_ok:
+        notification.email_sent = email_ok
+        notification.sms_sent = sms_ok
+        notification.save(update_fields=["email_sent", "sms_sent"])
 
     return notification
 

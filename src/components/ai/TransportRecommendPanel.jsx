@@ -14,6 +14,7 @@ import { useState } from 'react'
 import { aiApi } from '@/api/ai'
 import { Sparkles, Truck, Loader2, AlertCircle, CheckCircle, Clock } from 'lucide-react'
 import clsx from 'clsx'
+import SpeakButton from '@/components/voice/SpeakButton'
 
 const URGENCY_CONFIG = {
   immediate: { color: 'bg-red-100 text-red-700 border-red-200',     label: 'IMMEDIATE' },
@@ -63,12 +64,23 @@ export default function TransportRecommendPanel({
 
   const urgencyCfg = URGENCY_CONFIG[result?.data?.urgency_classification] || URGENCY_CONFIG.routine
 
+  const speakableText = result?.data && [
+    `${urgencyCfg.label.toLowerCase()} urgency.`,
+    result.data.estimated_dispatch_time_minutes ? `Estimated dispatch time: ${result.data.estimated_dispatch_time_minutes} minutes.` : '',
+    recommended
+      ? `Recommended vehicle: ${recommended.registration_number || recommended.name || result.data.recommended_vehicle_id}.`
+      : (result.data.recommended_vehicle_id ? `Recommended vehicle ID: ${result.data.recommended_vehicle_id}.` : 'No suitable vehicle found.'),
+    result.data.reasoning,
+    result.data.alternatives?.length ? `Alternatives: ${result.data.alternatives.join(', ')}.` : '',
+  ].filter(Boolean).join(' ')
+
   return (
     <div className="border border-amber-200 rounded-xl bg-amber-50 overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-2.5 px-4 py-3 bg-amber-600">
         <Truck size={15} className="text-amber-100" />
         <span className="text-white text-sm font-semibold flex-1">AI Transport Recommendation</span>
+        {result && <SpeakButton text={speakableText} className="!bg-white/20 !text-white hover:!bg-white/30" />}
         <span className="text-amber-200 text-[11px]">{availableVehicles.length} vehicles available</span>
       </div>
 

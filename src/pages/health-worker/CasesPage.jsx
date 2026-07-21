@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { casesApi, facilitiesApi, referralsApi, transportApi, consultationsApi, patientsApi } from '@/api/client'
+import { useOfflineQueue } from '@/contexts/OfflineQueueContext'
+import { QueueKinds, isQueueItemFailed } from '@/utils/offlineQueue'
+import { cachedFetch } from '@/utils/cachedFetch'
 import { StatusBadge, PageSpinner, EmptyState, DangerSignList, Spinner, FormField } from '@/components/ui'
-import { ClipboardList, Plus, Clock, AlertTriangle, X, ArrowRightLeft, Truck, Video, MapPin, CheckCircle, ChevronRight } from 'lucide-react'
+import { ClipboardList, Plus, Clock, AlertTriangle, AlertOctagon, X, ArrowRightLeft, Truck, Video, MapPin, CheckCircle, ChevronRight } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -458,18 +461,25 @@ function PatientSearchStep({ onSelect, onSkip }) {
 // ── Create Case Modal ─────────────────────────────────────────────────────────
 function CreateCaseModal({ open, onClose, onCreated }) {
   const navigate = useNavigate()
-  const [step, setStep]               = useState(0) // 0=patient search, 1=case form, 2=actions
+  const [step, setStep]               = useState(0) // 0=patient search, 1=case form, 2=actions, 3=queued offline
   const [createdCase, setCreatedCase] = useState(null)
   const [form, setForm]               = useState(INITIAL_FORM)
   const [facilities, setFacilities]   = useState([])
+  const [facilitiesFromCache, setFacilitiesFromCache] = useState(false)
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState('')
+  const { submitOrQueue } = useOfflineQueue()
 
   useEffect(() => {
     if (open) {
       setForm(INITIAL_FORM); setError(''); setStep(0); setCreatedCase(null)
-      facilitiesApi.list()
-        .then(({ data }) => setFacilities(Array.isArray(data) ? data : data.results || []))
+      // Cached so the required "Referring Facility" field still has options
+      // offline — without this, the case form is unusable with no signal.
+      cachedFetch('facilities_list', () => facilitiesApi.list().then(r => r.data))
+        .then(({ data, fromCache }) => {
+          setFacilities(Array.isArray(data) ? data : data.results || [])
+          setFacilitiesFromCache(fromCache)
+        })
         .catch(() => setError('Could not load facilities.'))
     }
   }, [open])
@@ -527,10 +537,20 @@ function CreateCaseModal({ open, onClose, onCreated }) {
         vital_signs,
         referring_facility:    form.referring_facility,
       }
-      const { data: newCase } = await casesApi.create(payload)
-      onCreated?.(newCase)
-      setCreatedCase(newCase)
-      setStep(2)
+      const facilityLabel = facilities.find(f => f.id === form.referring_facility)?.name || 'facility'
+      const result = await submitOrQueue({
+        method: 'post',
+        url: '/api/cases/',
+        data: payload,
+        meta: { kind: QueueKinds.CASE_CREATE, label: `${form.patient_name || 'Case'} — ${facilityLabel}` },
+      })
+      if (result.queued) {
+        setStep(3)
+      } else {
+        onCreated?.(result.response.data)
+        setCreatedCase(result.response.data)
+        setStep(2)
+      }
     } catch (err) {
       const d = err?.response?.data
       if (d && typeof d === 'object') {
@@ -557,12 +577,12 @@ function CreateCaseModal({ open, onClose, onCreated }) {
   return (
     <div style={{position:'fixed', inset:0, zIndex:50, overflowY:'auto', background:'rgba(15,23,42,0.45)', backdropFilter:'blur(4px)', display:'flex', alignItems:'flex-start', justifyContent:'center', padding:'16px'}}
       onClick={step===1 ? handleClose : undefined}>
-      <div style={{position:'relative', background:'white', borderRadius:'16px', width:'100%', maxWidth:step===2?'520px':'680px', margin:'40px auto', boxShadow:'0 25px 50px rgba(0,0,0,0.35)', transition:'max-width 0.2s ease'}}
+      <div style={{position:'relative', background:'white', borderRadius:'16px', width:'100%', maxWidth:(step===2||step===3)?'520px':'680px', margin:'40px auto', boxShadow:'0 25px 50px rgba(0,0,0,0.35)', transition:'max-width 0.2s ease'}}
         onClick={e => e.stopPropagation()}>
         <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 24px', borderBottom:'1px solid #f1f5f9', position:'sticky', top:0, background:'white', borderRadius:'16px 16px 0 0', zIndex:10}}>
           <div>
-            <h2 style={{margin:0, fontSize:'1.1rem', fontWeight:600, color:'#0f172a'}}>{step===0?'Find Patient':step===1?'New Emergency Case':'Next Steps'}</h2>
-            <p style={{margin:0, fontSize:'0.8rem', color:'#64748b'}}>{step===0?'Step 1 of 3 — Search existing patient':step===1?'Step 2 of 3 — Case details':'Step 3 of 3 — Next action'}</p>
+            <h2 style={{margin:0, fontSize:'1.1rem', fontWeight:600, color:'#0f172a'}}>{step===0?'Find Patient':step===1?'New Emergency Case':step===3?'Case Saved':'Next Steps'}</h2>
+            <p style={{margin:0, fontSize:'0.8rem', color:'#64748b'}}>{step===0?'Step 1 of 3 — Search existing patient':step===1?'Step 2 of 3 — Case details':step===3?'Saved offline':'Step 3 of 3 — Next action'}</p>
           </div>
           {step===1 && <button onClick={handleClose} style={{background:'none', border:'none', cursor:'pointer', color:'#64748b', padding:'4px', borderRadius:'8px'}}><X size={18}/></button>}
         </div>
@@ -611,6 +631,9 @@ function CreateCaseModal({ open, onClose, onCreated }) {
               </div>
 
               <p style={sectionStyle}>Facility</p>
+              {facilitiesFromCache && (
+                <p style={{fontSize:'0.75rem', color:'#b45309', marginTop:0, marginBottom:'8px'}}>Showing facilities saved from your last connection — may be outdated.</p>
+              )}
               <div style={{marginBottom:'12px'}}>
                 <label style={labelStyle}>Referring Facility <span style={{color:'#e43418'}}>*</span></label>
                 <select value={form.referring_facility} onChange={set('referring_facility')} style={inputStyle}>
@@ -677,6 +700,21 @@ function CreateCaseModal({ open, onClose, onCreated }) {
           {step===2 && createdCase && (
             <ActionPicker caseData={createdCase} onClose={handleClose} navigate={navigate}/>
           )}
+          {step===3 && (
+            <div>
+              <div style={{display:'flex', alignItems:'flex-start', gap:'10px', padding:'12px', background:'#fffbeb', border:'1px solid #fde68a', borderRadius:'12px', marginBottom:'16px'}}>
+                <Clock size={18} color="#b45309" style={{flexShrink:0, marginTop:2}}/>
+                <div>
+                  <p style={{margin:0, fontSize:'0.875rem', fontWeight:600, color:'#92400e'}}>Case saved on this device</p>
+                  <p style={{margin:'2px 0 0', fontSize:'0.8rem', color:'#92400e'}}>
+                    No connection right now — it will be sent to the server automatically once you're back online.
+                    Referral, transport, and consultation can be set up for it after that.
+                  </p>
+                </div>
+              </div>
+              <button onClick={handleClose} style={{width:'100%', padding:'11px', background:'#207652', color:'white', border:'none', borderRadius:'8px', fontSize:'0.875rem', fontWeight:500, cursor:'pointer'}}>Done</button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -689,16 +727,38 @@ export default function CasesPage() {
   const [cases, setCases]     = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal]     = useState(false)
+  const { pending, syncVersion } = useOfflineQueue()
 
-  useEffect(() => {
+  const queuedCases = pending
+    .filter(item => item.meta?.kind === QueueKinds.CASE_CREATE)
+    .map(item => ({
+      id: `queued:${item.id}`,
+      __queued: true,
+      __failed: isQueueItemFailed(item),
+      patient_name: item.data.patient_name,
+      patient_age: item.data.patient_age,
+      gestational_age_weeks: item.data.gestational_age_weeks,
+      danger_signs: item.data.danger_signs || [],
+      created_by_name: null,
+      referring_facility_name: null,
+      created_at: item.createdAt,
+    }))
+
+  const load = () => {
     casesApi.list()
       .then(({ data }) => setCases(Array.isArray(data) ? data : data.results || []))
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  useEffect(() => { load() }, [])
+  // A queued case disappears from `pending` the instant it syncs — refetch
+  // immediately so the real record replaces it without a visible gap.
+  useEffect(() => { if (syncVersion > 0) load() }, [syncVersion])
 
   if (loading) return <PageSpinner />
 
   const canCreate = isHealthWorker || isSuperAdmin
+  const listData = [...queuedCases, ...cases]
 
   return (
     <div className="p-6 space-y-5 animate-fade-in">
@@ -710,11 +770,31 @@ export default function CasesPage() {
         {canCreate && <button onClick={() => setModal(true)} className="btn-primary"><Plus size={16}/> New Case</button>}
       </div>
 
-      {cases.length === 0 ? (
+      {listData.length === 0 ? (
         <EmptyState icon={ClipboardList} title="No cases yet" description="Create a new emergency case to get started"
           action={canCreate && <button onClick={() => setModal(true)} className="btn-primary"><Plus size={16}/> New Case</button>} />
       ) : (
         <div className="card divide-y divide-slate-50">
+          {queuedCases.map(c => (
+            <div key={c.id} className={`flex items-start gap-4 px-5 py-4 border-l-4 ${c.__failed ? 'border-l-danger-400 bg-danger-50/30' : 'border-l-amber-400 bg-amber-50/30'}`}>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${c.__failed ? 'bg-danger-100' : 'bg-amber-100'}`}>
+                {c.__failed ? <AlertOctagon size={18} className="text-danger-600"/> : <Clock size={18} className="text-amber-600"/>}
+              </div>
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-semibold text-slate-900">
+                    {c.patient_name || 'Patient'} · {c.patient_age}y
+                    {c.gestational_age_weeks ? ` · ${c.gestational_age_weeks}wk` : ''}
+                  </p>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase ${c.__failed ? 'bg-danger-100 text-danger-700' : 'bg-amber-100 text-amber-700'}`}>
+                    {c.__failed ? 'Sync failed' : 'Pending sync'}
+                  </span>
+                </div>
+                <DangerSignList signs={c.danger_signs}/>
+                <p className="text-xs text-slate-400">not yet on server · {formatDistanceToNow(new Date(c.created_at), {addSuffix:true})}</p>
+              </div>
+            </div>
+          ))}
           {cases.map(c => (
             <Link key={c.id} to={`/app/cases/${c.id}`} className="flex items-start gap-4 px-5 py-4 hover:bg-slate-50 transition-colors group">
               <div className="w-10 h-10 bg-danger-50 rounded-xl flex items-center justify-center shrink-0 mt-0.5">

@@ -16,7 +16,7 @@ import clsx from 'clsx'
 import { useOfflineQueue } from '../../contexts/OfflineQueueContext'
 import { QueueKindInfo, MAX_RETRIES, isQueueItemFailed, removeFromQueue } from '../../utils/offlineQueue'
 
-const ICONS = { UserPlus, ArrowLeftRight, Stethoscope, FileText }
+const ICONS = { UserPlus, ArrowLeftRight, Stethoscope, FileText, AlertCircle }
 
 const timeAgo = (ts) => {
   const mins = Math.floor((Date.now() - ts) / 60000)

@@ -18,12 +18,14 @@ export { MAX_RETRIES }
 
 export const QueueKinds = {
   PATIENT_CREATE: 'patient_create',
+  CASE_CREATE: 'case_create',
   REFERRAL_CREATE: 'referral_create',
   ANC_VISIT_CREATE: 'anc_visit_create',
 }
 
 export const QueueKindInfo = {
   [QueueKinds.PATIENT_CREATE]:   { entityLabel: 'Patient',   actionLabel: 'New patient record', icon: 'UserPlus' },
+  [QueueKinds.CASE_CREATE]:      { entityLabel: 'Case',      actionLabel: 'New emergency case',  icon: 'AlertCircle' },
   [QueueKinds.REFERRAL_CREATE]:  { entityLabel: 'Referral',  actionLabel: 'New referral',        icon: 'ArrowLeftRight' },
   [QueueKinds.ANC_VISIT_CREATE]: { entityLabel: 'ANC Visit', actionLabel: 'New ANC visit',       icon: 'Stethoscope' },
 }

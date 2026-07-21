@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useOfflineQueue } from '@/contexts/OfflineQueueContext'
 import { QueueKinds, isQueueItemFailed, MAX_RETRIES } from '@/utils/offlineQueue'
 import { cachedFetch } from '@/utils/cachedFetch'
+import SpeakButton from '@/components/voice/SpeakButton'
 
 const ALL_DANGER_SIGNS = [
   'PPH','APH','RUPTURED_UTERUS','ECLAMPSIA','SEVERE_PRE_ECLAMPSIA',
@@ -944,7 +945,10 @@ export default function CaseDetailPage() {
           </div>
 
           <div className="card px-5 py-4">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Presenting Complaint</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Presenting Complaint</p>
+              <SpeakButton text={c.presenting_complaint} />
+            </div>
             <p className="text-sm text-slate-800 leading-relaxed">{c.presenting_complaint}</p>
           </div>
 

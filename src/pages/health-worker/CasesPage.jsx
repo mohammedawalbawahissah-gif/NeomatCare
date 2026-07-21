@@ -4,6 +4,8 @@ import { casesApi, facilitiesApi, referralsApi, transportApi, consultationsApi, 
 import { useOfflineQueue } from '@/contexts/OfflineQueueContext'
 import { QueueKinds, isQueueItemFailed } from '@/utils/offlineQueue'
 import { cachedFetch } from '@/utils/cachedFetch'
+import DictateButton from '@/components/voice/DictateButton'
+import SpeakButton from '@/components/voice/SpeakButton'
 import { StatusBadge, PageSpinner, EmptyState, DangerSignList, Spinner, FormField } from '@/components/ui'
 import { ClipboardList, Plus, Clock, AlertTriangle, AlertOctagon, X, ArrowRightLeft, Truck, Video, MapPin, CheckCircle, ChevronRight } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
@@ -656,7 +658,12 @@ function CreateCaseModal({ open, onClose, onCreated }) {
               <p style={sectionStyle}>Clinical</p>
               <div style={{marginBottom:'12px'}}>
                 <label style={labelStyle}>Presenting Complaint <span style={{color:'#e43418'}}>*</span></label>
-                <textarea rows={2} value={form.presenting_complaint} onChange={set('presenting_complaint')} placeholder="Chief complaint in your own words..." style={{...inputStyle, resize:'vertical'}}/>
+                <div style={{display:'flex', gap:'8px', alignItems:'flex-start'}}>
+                  <textarea rows={2} value={form.presenting_complaint} onChange={set('presenting_complaint')} placeholder="Chief complaint in your own words..." style={{...inputStyle, resize:'vertical', flex:1}}/>
+                  <div style={{paddingTop:'6px'}}>
+                    <DictateButton onResult={(text) => setForm(f => ({ ...f, presenting_complaint: (f.presenting_complaint ? f.presenting_complaint + ' ' : '') + text }))} />
+                  </div>
+                </div>
               </div>
 
               <div style={{marginBottom:'16px'}}>

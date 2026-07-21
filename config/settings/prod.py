@@ -17,7 +17,6 @@ CSRF_TRUSTED_ORIGINS = [
     'https://neomatcare-frontend-production.up.railway.app',
     'https://neomatcare-1iik.onrender.com',
 ]
-]
 
 CORS_ALLOW_CREDENTIALS = True
 

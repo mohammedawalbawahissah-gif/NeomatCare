@@ -4,6 +4,8 @@ import { facilitiesApi } from '@/api/client'
 import { PageSpinner, EmptyState, Modal, Spinner, FormField, StatCard } from '@/components/ui'
 import { Building2, Plus, MapPin, CheckCircle, XCircle, Search, Pencil, Trash2 } from 'lucide-react'
 import clsx from 'clsx'
+import VoiceEntryBar, { VoiceEntryTrigger } from '@/components/voice/VoiceEntryBar'
+import useVoiceEntry from '@/hooks/useVoiceEntry'
 
 // All 6 levels from the backend FacilityLevel model
 const LEVEL_LABELS = {
@@ -36,6 +38,13 @@ function CreateFacilityModal({ open, onClose, onCreated }) {
 
   const set    = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
   const toggle = k => setForm(f => ({ ...f, [k]: !f[k] }))
+  const voiceFields = [
+    { key: 'name', label: 'Facility Name', get: () => form.name, set: (v) => setForm(f => ({ ...f, name: v })) },
+    { key: 'phone', label: 'Phone', get: () => form.phone, set: (v) => setForm(f => ({ ...f, phone: v })) },
+    { key: 'district', label: 'District', get: () => form.district, set: (v) => setForm(f => ({ ...f, district: v })) },
+    { key: 'region', label: 'Region', get: () => form.region, set: (v) => setForm(f => ({ ...f, region: v })) },
+  ]
+  const voiceEntry = useVoiceEntry(voiceFields)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -64,6 +73,7 @@ function CreateFacilityModal({ open, onClose, onCreated }) {
     <Modal open={open} onClose={onClose} title="Register New Facility" size="lg">
       <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
         {error && <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 text-sm text-red-700">{error}</div>}
+        <VoiceEntryTrigger onClick={voiceEntry.start} count={voiceFields.length} />
         <div className="grid grid-cols-2 gap-3">
           <FormField label="Facility Name" required className="col-span-2">
             <input type="text" required value={form.name} onChange={set('name')} className="input-field" placeholder="e.g. Korle-Bu Teaching Hospital" />
@@ -114,6 +124,7 @@ function CreateFacilityModal({ open, onClose, onCreated }) {
           </button>
         </div>
       </form>
+      <VoiceEntryBar voiceEntry={voiceEntry} />
     </Modal>
   )
 }
@@ -126,6 +137,15 @@ function EditFacilityModal({ open, onClose, facility, onUpdated }) {
   useEffect(() => {
     if (facility) setForm({ ...facility })
   }, [facility])
+
+  const formSafe = form || {}
+  const voiceFields = [
+    { key: 'name', label: 'Facility Name', get: () => formSafe.name, set: (v) => setForm(f => ({ ...f, name: v })) },
+    { key: 'phone', label: 'Phone', get: () => formSafe.phone, set: (v) => setForm(f => ({ ...f, phone: v })) },
+    { key: 'district', label: 'District', get: () => formSafe.district, set: (v) => setForm(f => ({ ...f, district: v })) },
+    { key: 'region', label: 'Region', get: () => formSafe.region, set: (v) => setForm(f => ({ ...f, region: v })) },
+  ]
+  const voiceEntry = useVoiceEntry(voiceFields)
 
   if (!form) return null
 
@@ -159,6 +179,7 @@ function EditFacilityModal({ open, onClose, facility, onUpdated }) {
     <Modal open={open} onClose={onClose} title="Edit Facility" size="lg">
       <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
         {error && <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 text-sm text-red-700">{error}</div>}
+        <VoiceEntryTrigger onClick={voiceEntry.start} count={voiceFields.length} />
         <div className="grid grid-cols-2 gap-3">
           <FormField label="Facility Name" required className="col-span-2">
             <input type="text" required value={form.name} onChange={set('name')} className="input-field" />
@@ -209,6 +230,7 @@ function EditFacilityModal({ open, onClose, facility, onUpdated }) {
           </button>
         </div>
       </form>
+      <VoiceEntryBar voiceEntry={voiceEntry} />
     </Modal>
   )
 }

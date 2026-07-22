@@ -13,7 +13,10 @@ import { format } from 'date-fns'
 import { useAuth } from '@/contexts/AuthContext'
 import { useOfflineQueue } from '@/contexts/OfflineQueueContext'
 import { QueueKinds, isQueueItemFailed } from '@/utils/offlineQueue'
-import DictateButton from '@/components/voice/DictateButton'
+import VoiceEntryBar, { VoiceEntryTrigger } from '@/components/voice/VoiceEntryBar'
+import ReadAloudTrigger from '@/components/voice/ReadAloudBar'
+import useVoiceEntry from '@/hooks/useVoiceEntry'
+import useReadAloud from '@/hooks/useReadAloud'
 
 const inputCls = 'w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-300 bg-white'
 const labelCls = 'block text-sm font-medium text-slate-700 mb-1'
@@ -38,6 +41,12 @@ function AddANCVisitModal({ open, onClose, patientId, onSaved }) {
   const { submitOrQueue } = useOfflineQueue()
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
+  const setVoiceField = k => (v) => setForm(f => ({ ...f, [k]: v }))
+  const voiceFields = [
+    { key: 'notes', label: 'Notes', get: () => form.notes, set: setVoiceField('notes') },
+    { key: 'concerns', label: 'Concerns', get: () => form.concerns, set: setVoiceField('concerns') },
+  ]
+  const voiceEntry = useVoiceEntry(voiceFields)
 
   const handleSave = async () => {
     if (!form.visit_date) { setError('Visit date is required.'); return }
@@ -70,6 +79,7 @@ function AddANCVisitModal({ open, onClose, patientId, onSaved }) {
     <Modal open={open} onClose={onClose} title="Log ANC Visit">
       <div className="space-y-4">
         {error && <Alert type="error" message={error}/>}
+        <VoiceEntryTrigger onClick={voiceEntry.start} count={voiceFields.length} />
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
             <label className={labelCls}>Visit Date <span className="text-red-500">*</span></label>
@@ -83,17 +93,11 @@ function AddANCVisitModal({ open, onClose, patientId, onSaved }) {
           <div><label className={labelCls}>Fundal Height (cm)</label><input type="number" className={inputCls} value={form.fundal_height_cm} onChange={set('fundal_height_cm')} step="0.1"/></div>
           <div className="col-span-2">
             <label className={labelCls}>Notes</label>
-            <div className="flex gap-2 items-start">
-              <textarea rows={2} className={inputCls+' resize-none flex-1'} value={form.notes} onChange={set('notes')}/>
-              <DictateButton onResult={(text) => setForm(f => ({ ...f, notes: (f.notes ? f.notes + ' ' : '') + text }))} className="mt-1" />
-            </div>
+            <textarea rows={2} className={inputCls+' resize-none w-full'} value={form.notes} onChange={set('notes')}/>
           </div>
           <div className="col-span-2">
             <label className={labelCls}>Concerns</label>
-            <div className="flex gap-2 items-start">
-              <textarea rows={2} className={inputCls+' resize-none flex-1'} value={form.concerns} onChange={set('concerns')} placeholder="Any clinical concerns noted…"/>
-              <DictateButton onResult={(text) => setForm(f => ({ ...f, concerns: (f.concerns ? f.concerns + ' ' : '') + text }))} className="mt-1" />
-            </div>
+            <textarea rows={2} className={inputCls+' resize-none w-full'} value={form.concerns} onChange={set('concerns')} placeholder="Any clinical concerns noted…"/>
           </div>
         </div>
         <div className="flex gap-3 pt-2 border-t border-slate-100">
@@ -103,6 +107,7 @@ function AddANCVisitModal({ open, onClose, patientId, onSaved }) {
           </button>
         </div>
       </div>
+      <VoiceEntryBar voiceEntry={voiceEntry} />
     </Modal>
   )
 }
@@ -112,6 +117,8 @@ function ConsentModal({ open, onClose, patientId, onSaved }) {
   const [form, setForm] = useState({ consent_type: 'data_use', action: 'granted', notes: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
+  const voiceFields = [{ key: 'notes', label: 'Notes', get: () => form.notes, set: (v) => setForm(f => ({ ...f, notes: v })) }]
+  const voiceEntry = useVoiceEntry(voiceFields)
 
   const handleSave = async () => {
     setSaving(true); setError('')
@@ -134,6 +141,7 @@ function ConsentModal({ open, onClose, patientId, onSaved }) {
     <Modal open={open} onClose={onClose} title="Record Consent">
       <div className="space-y-4">
         {error && <Alert type="error" message={error}/>}
+        <VoiceEntryTrigger onClick={voiceEntry.start} count={voiceFields.length} />
         <FormField label="Consent Type" required>
           <select className="input-field" value={form.consent_type} onChange={e => setForm(f=>({...f,consent_type:e.target.value}))}>
             {CONSENT_TYPES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
@@ -156,6 +164,7 @@ function ConsentModal({ open, onClose, patientId, onSaved }) {
           </button>
         </div>
       </div>
+      <VoiceEntryBar voiceEntry={voiceEntry} />
     </Modal>
   )
 }
@@ -286,6 +295,18 @@ export default function PatientDetailPage() {
     finally { setComputing(false) }
   }
 
+  // Hooks must run unconditionally on every render, so this is computed
+  // before the loading/error early-returns below, using a safe fallback.
+  const pSafe = patient || {}
+  const overviewReadAloudItems = [
+    { label: 'Patient', text: `${pSafe.patient_name || 'Unnamed patient'}, ${pSafe.age} years, ${pSafe.town || 'location unknown'}` },
+    { label: 'Blood group', text: pSafe.blood_group || 'not recorded' },
+    { label: 'Obstetric summary', text: `Gravida ${pSafe.gravida ?? 'unknown'}, parity ${pSafe.parity ?? 'unknown'}, ${pSafe.anc_visits || 0} ANC visits` },
+    ...((pSafe.next_of_kin_name || pSafe.next_of_kin_phone) ? [{ label: 'Next of kin', text: `${pSafe.next_of_kin_name || 'unnamed'}, ${pSafe.next_of_kin_relationship || ''}, ${pSafe.next_of_kin_phone || 'no phone on file'}` }] : []),
+    ...(pSafe.notes ? [{ label: 'Background notes', text: pSafe.notes }] : []),
+  ]
+  const overviewReadAloud = useReadAloud(overviewReadAloudItems)
+
   if (loading) return <PageSpinner/>
   if (error)   return <div className="p-6"><Alert type="error" message={error}/></div>
 
@@ -364,6 +385,7 @@ export default function PatientDetailPage() {
       {/* ── Overview Tab ── */}
       {tab === 'overview' && (
         <div className="grid lg:grid-cols-2 gap-5">
+          <div className="lg:col-span-2"><ReadAloudTrigger readAloud={overviewReadAloud} /></div>
           <div className="card px-5 py-4 space-y-3">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Demographics</p>
             {[

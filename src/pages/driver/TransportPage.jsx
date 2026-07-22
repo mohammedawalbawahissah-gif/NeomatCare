@@ -4,6 +4,8 @@ import { PageSpinner, StatusBadge, Spinner } from '@/components/ui'
 import { Plus, X, Pencil, Trash2, Phone } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { useAuth } from '@/contexts/AuthContext'
+import VoiceEntryBar, { VoiceEntryTrigger } from '@/components/voice/VoiceEntryBar'
+import useVoiceEntry from '@/hooks/useVoiceEntry'
 
 // Vehicle type values match backend Vehicle.VehicleType choices
 const TYPE_ICONS = {
@@ -59,6 +61,13 @@ function RegisterVehicleModal({ open, onClose, onCreated }) {
   const [error, setError]   = useState('')
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
+  const voiceFields = [
+    { key: 'registration', label: 'Registration Number', get: () => form.registration, set: (v) => setForm(f => ({ ...f, registration: v })) },
+    { key: 'make', label: 'Make', get: () => form.make, set: (v) => setForm(f => ({ ...f, make: v })) },
+    { key: 'model', label: 'Model', get: () => form.model, set: (v) => setForm(f => ({ ...f, model: v })) },
+    { key: 'notes', label: 'Notes', get: () => form.notes, set: (v) => setForm(f => ({ ...f, notes: v })) },
+  ]
+  const voiceEntry = useVoiceEntry(voiceFields)
 
   const [driverUsers, setDriverUsers] = useState([])
 
@@ -113,6 +122,7 @@ function RegisterVehicleModal({ open, onClose, onCreated }) {
 
           <form onSubmit={handleSubmit} noValidate>
             <p style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.05em', textTransform: 'uppercase', margin: '0 0 12px' }}>Vehicle Details</p>
+            <VoiceEntryTrigger onClick={voiceEntry.start} count={voiceFields.length} className="mb-3" />
             <div style={gridStyle(2)}>
               <div style={{ gridColumn: '1/-1' }}>
                 <label style={labelStyle}>Registration Number <span style={{ color: '#e43418' }}>*</span></label>
@@ -171,6 +181,7 @@ function RegisterVehicleModal({ open, onClose, onCreated }) {
               </button>
             </div>
           </form>
+          <VoiceEntryBar voiceEntry={voiceEntry} />
         </div>
       </div>
     </div>
@@ -195,9 +206,17 @@ function EditVehicleModal({ open, onClose, vehicle, onUpdated }) {
       .catch(() => {})
   }, [open])
 
-  if (!open || !form) return null
-
+  const formSafe = form || {}
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
+  const voiceFields = [
+    { key: 'registration', label: 'Registration Number', get: () => formSafe.registration, set: (v) => setForm(f => ({ ...f, registration: v })) },
+    { key: 'make', label: 'Make', get: () => formSafe.make, set: (v) => setForm(f => ({ ...f, make: v })) },
+    { key: 'model', label: 'Model', get: () => formSafe.model, set: (v) => setForm(f => ({ ...f, model: v })) },
+    { key: 'notes', label: 'Notes', get: () => formSafe.notes, set: (v) => setForm(f => ({ ...f, notes: v })) },
+  ]
+  const voiceEntry = useVoiceEntry(voiceFields)
+
+  if (!open || !form) return null
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -234,6 +253,7 @@ function EditVehicleModal({ open, onClose, vehicle, onUpdated }) {
         <div style={{ padding: '20px 24px' }}>
           {error && <div style={{ background: '#fff4f2', border: '1px solid #ffd0c8', borderRadius: '8px', padding: '10px 14px', color: '#c02812', fontSize: '0.85rem', marginBottom: '16px' }}>{error}</div>}
           <form onSubmit={handleSubmit} noValidate>
+            <VoiceEntryTrigger onClick={voiceEntry.start} count={voiceFields.length} className="mb-3" />
             <div style={gridStyle(2)}>
               <div style={{ gridColumn: '1/-1' }}>
                 <label style={labelStyle}>Registration Number <span style={{ color: '#e43418' }}>*</span></label>
@@ -282,6 +302,7 @@ function EditVehicleModal({ open, onClose, vehicle, onUpdated }) {
               </button>
             </div>
           </form>
+          <VoiceEntryBar voiceEntry={voiceEntry} />
         </div>
       </div>
     </div>
@@ -339,6 +360,8 @@ function StatusModal({ open, onClose, request, onUpdated }) {
   const [notes, setNotes]         = useState('')
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState('')
+  const voiceFields = [{ key: 'notes', label: 'Notes', get: () => notes, set: setNotes }]
+  const voiceEntry = useVoiceEntry(voiceFields)
 
   const options = REQUEST_STATUS_TRANSITIONS[request?.status] || []
 
@@ -381,6 +404,7 @@ function StatusModal({ open, onClose, request, onUpdated }) {
             </div>
             <div>
               <label style={labelStyle}>Notes</label>
+              <VoiceEntryTrigger onClick={voiceEntry.start} count={voiceFields.length} className="mb-2" />
               <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inputStyle, resize: 'vertical' }} placeholder="Any notes for this update..." />
             </div>
             <div style={{ display: 'flex', gap: '10px', paddingTop: '12px', borderTop: '1px solid #f1f5f9' }}>
@@ -390,6 +414,7 @@ function StatusModal({ open, onClose, request, onUpdated }) {
               </button>
             </div>
           </form>
+          <VoiceEntryBar voiceEntry={voiceEntry} />
         </div>
       </div>
     </div>

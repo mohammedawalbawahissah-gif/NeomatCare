@@ -5,6 +5,8 @@ import { PageSpinner, StatusBadge, Spinner } from '@/components/ui'
 import { Video, VideoOff, Phone, PhoneOff, ArrowLeft, Send, ChevronRight, Clock, MessageSquare, Plus, X, Mic, MicOff, Edit2, Trash2, Save } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { useAuth } from '@/contexts/AuthContext'
+import VoiceEntryBar, { VoiceEntryTrigger } from '@/components/voice/VoiceEntryBar'
+import useVoiceEntry from '@/hooks/useVoiceEntry'
 
 const inputStyle = { width:'100%', padding:'10px 14px', border:'1px solid #e2e8f0', borderRadius:'8px', fontSize:'0.875rem', outline:'none', boxSizing:'border-box', background:'white' }
 const labelStyle = { display:'block', fontSize:'0.875rem', fontWeight:500, color:'#374151', marginBottom:'6px' }
@@ -39,6 +41,17 @@ function AddSpecialistModal({ open, onClose, onCreated }) {
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
   const set = k => e => setForm(f => ({...f, [k]: e.target.value}))
+  const setVoiceField = k => (v) => setForm(f => ({ ...f, [k]: v }))
+  const voiceFields = [
+    { key: 'name', label: 'Specialist Name', get: () => form.name, set: setVoiceField('name') },
+    { key: 'professional_pin', label: 'Professional Pin', get: () => form.professional_pin, set: setVoiceField('professional_pin') },
+    { key: 'qualification', label: 'Qualification', get: () => form.qualification, set: setVoiceField('qualification') },
+    { key: 'specialist_phone', label: 'Phone', get: () => form.specialist_phone, set: setVoiceField('specialist_phone') },
+    { key: 'whatsapp_number', label: 'WhatsApp', get: () => form.whatsapp_number, set: setVoiceField('whatsapp_number') },
+    { key: 'emergency_contact', label: 'Emergency Contact', get: () => form.emergency_contact, set: setVoiceField('emergency_contact') },
+    { key: 'bio', label: 'Bio', get: () => form.bio, set: setVoiceField('bio') },
+  ]
+  const voiceEntry = useVoiceEntry(voiceFields)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -78,6 +91,7 @@ function AddSpecialistModal({ open, onClose, onCreated }) {
         <div style={{padding:'20px 24px'}}>
           {error && <div style={{background:'#fff4f2',border:'1px solid #ffd0c8',borderRadius:'8px',padding:'10px 14px',color:'#c02812',fontSize:'0.85rem',marginBottom:'16px'}}>{error}</div>}
           <form onSubmit={handleSubmit} noValidate style={{display:'flex',flexDirection:'column',gap:'12px'}}>
+            <VoiceEntryTrigger onClick={voiceEntry.start} count={voiceFields.length} />
             <div><label style={labelStyle}>Specialist Name <span style={{color:'#e43418'}}>*</span></label><input value={form.name} onChange={set('name')} placeholder="e.g. Dr. Ama Owusu" style={inputStyle}/></div>
             <div><label style={labelStyle}>Professional Pin <span style={{color:'#e43418'}}>*</span></label><input value={form.professional_pin} onChange={set('professional_pin')} placeholder="e.g. MDC/PN/XXXXX" style={inputStyle}/></div>
             <div style={gridStyle(2)}>
@@ -101,6 +115,7 @@ function AddSpecialistModal({ open, onClose, onCreated }) {
               </button>
             </div>
           </form>
+          <VoiceEntryBar voiceEntry={voiceEntry} />
         </div>
       </div>
     </div>
@@ -115,6 +130,8 @@ function ConsultStatusModal({ open, onClose, consultation, onUpdated }) {
   const [notes, setNotes]         = useState('')
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState('')
+  const voiceFields = [{ key: 'notes', label: 'Notes', get: () => notes, set: setNotes }]
+  const voiceEntry = useVoiceEntry(voiceFields)
 
   const STATUS_OPTIONS = [
     { v:'active',    l:'Mark Active' },
@@ -151,6 +168,7 @@ function ConsultStatusModal({ open, onClose, consultation, onUpdated }) {
               </select>
             </div>
             <div><label style={labelStyle}>Notes</label>
+              <VoiceEntryTrigger onClick={voiceEntry.start} count={voiceFields.length} className="mb-2" />
               <textarea rows={3} value={notes} onChange={e=>setNotes(e.target.value)} style={{...inputStyle,resize:'vertical'}} placeholder="Clinical notes, findings, recommendations…"/>
             </div>
             <div style={{display:'flex',gap:'10px',paddingTop:'12px',borderTop:'1px solid #f1f5f9'}}>
@@ -160,6 +178,7 @@ function ConsultStatusModal({ open, onClose, consultation, onUpdated }) {
               </button>
             </div>
           </form>
+          <VoiceEntryBar voiceEntry={voiceEntry} />
         </div>
       </div>
     </div>
@@ -481,6 +500,8 @@ function EditConsultationModal({ open, onClose, consultation, onUpdated }) {
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
   const set = k => e => setForm(f => ({...f, [k]: e.target.value}))
+  const voiceFields = [{ key: 'notes', label: 'Clinical Notes', get: () => form.notes, set: (v) => setForm(f => ({ ...f, notes: v })) }]
+  const voiceEntry = useVoiceEntry(voiceFields)
 
   const handleSubmit = async (e) => {
     e.preventDefault(); setSaving(true); setError('')
@@ -504,6 +525,7 @@ function EditConsultationModal({ open, onClose, consultation, onUpdated }) {
           <form onSubmit={handleSubmit} style={{display:'flex',flexDirection:'column',gap:'14px'}}>
             <div>
               <label style={{display:'block',fontSize:'0.8rem',fontWeight:600,color:'#64748b',marginBottom:'6px'}}>Clinical Notes</label>
+              <VoiceEntryTrigger onClick={voiceEntry.start} count={voiceFields.length} className="mb-2" />
               <textarea rows={4} value={form.notes} onChange={set('notes')} style={{width:'100%',padding:'10px 14px',border:'1px solid #e2e8f0',borderRadius:'8px',fontSize:'0.875rem',outline:'none',boxSizing:'border-box',resize:'vertical'}} placeholder="Clinical findings, recommendations…"/>
             </div>
             <div style={{display:'flex',gap:'10px',paddingTop:'12px',borderTop:'1px solid #f1f5f9'}}>
@@ -513,6 +535,7 @@ function EditConsultationModal({ open, onClose, consultation, onUpdated }) {
               </button>
             </div>
           </form>
+          <VoiceEntryBar voiceEntry={voiceEntry} />
         </div>
       </div>
     </div>

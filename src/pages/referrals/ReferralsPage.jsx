@@ -5,6 +5,8 @@ import { PageSpinner, StatusBadge, EmptyState, Alert, Modal, Spinner, FormField 
 import { ArrowRightLeft, ArrowLeft, Clock, CheckCircle, ChevronRight, Sparkles, Search, Phone } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 import HandoverBriefPanel from '@/components/ai/HandoverBriefPanel'
+import VoiceEntryBar, { VoiceEntryTrigger } from '@/components/voice/VoiceEntryBar'
+import useVoiceEntry from '@/hooks/useVoiceEntry'
 
 // ── Referral List ─────────────────────────────────────────────────────────────
 export function ReferralsPage() {
@@ -79,6 +81,8 @@ export function CreateReferralModal({ open, onClose, emergencyCaseId, onCreated 
   // The facility the clinician finally picks (either from suggestion or manual)
   const [selectedFacility, setSelectedFacility] = useState(null)
   const [overrideReason, setOverrideReason]     = useState('')
+  const overrideVoiceFields = [{ key: 'override', label: 'Override Reason', get: () => overrideReason, set: setOverrideReason }]
+  const overrideVoiceEntry = useVoiceEntry(overrideVoiceFields)
 
   const [saving, setSaving]   = useState(false)
   const [saveError, setSaveError] = useState('')
@@ -88,6 +92,8 @@ export function CreateReferralModal({ open, onClose, emergencyCaseId, onCreated 
   const [vehiclesLoading, setVehiclesLoading] = useState(false)
   const [selectedVehicle, setSelectedVehicle] = useState(null)
   const [transportNotes, setTransportNotes]   = useState('')
+  const transportVoiceFields = [{ key: 'notes', label: 'Transport Notes', get: () => transportNotes, set: setTransportNotes }]
+  const transportVoiceEntry = useVoiceEntry(transportVoiceFields)
   const [transportSaving, setTransportSaving] = useState(false)
   const [transportError, setTransportError]   = useState('')
 
@@ -232,6 +238,7 @@ export function CreateReferralModal({ open, onClose, emergencyCaseId, onCreated 
 
       {isOverride && (
         <FormField label="Override Reason" required>
+          <VoiceEntryTrigger onClick={overrideVoiceEntry.start} count={overrideVoiceFields.length} className="mb-2" />
           <textarea
             rows={2}
             value={overrideReason}
@@ -239,6 +246,7 @@ export function CreateReferralModal({ open, onClose, emergencyCaseId, onCreated 
             className="input-field resize-none"
             placeholder="Why are you selecting a different facility than recommended?"
           />
+          <VoiceEntryBar voiceEntry={overrideVoiceEntry} />
         </FormField>
       )}
 
@@ -504,8 +512,10 @@ export function CreateReferralModal({ open, onClose, emergencyCaseId, onCreated 
                 )}
                 <div>
                   <label className="text-xs font-medium text-slate-600 block mb-1">Notes <span className="text-slate-400 font-normal">(optional)</span></label>
+                  <VoiceEntryTrigger onClick={transportVoiceEntry.start} count={transportVoiceFields.length} className="mb-2" />
                   <textarea rows={2} value={transportNotes} onChange={e => setTransportNotes(e.target.value)}
                     className="input-field resize-none" placeholder="Any notes for the driver..." />
+                  <VoiceEntryBar voiceEntry={transportVoiceEntry} />
                 </div>
               </div>
             )}
@@ -535,6 +545,8 @@ function StatusModal({ open, onClose, referral, onUpdated }) {
   const [note, setNote]           = useState('')
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState('')
+  const voiceFields = [{ key: 'note', label: 'Note', get: () => note, set: setNote }]
+  const voiceEntry = useVoiceEntry(voiceFields)
 
   const validNext = referral?.valid_next_statuses || []
 
@@ -567,6 +579,7 @@ function StatusModal({ open, onClose, referral, onUpdated }) {
           </select>
         </FormField>
         <FormField label="Note">
+          <VoiceEntryTrigger onClick={voiceEntry.start} count={voiceFields.length} className="mb-2" />
           <textarea rows={2} value={note} onChange={e => setNote(e.target.value)}
             className="input-field resize-none" placeholder="Optional note about this transition..." />
         </FormField>
@@ -577,6 +590,7 @@ function StatusModal({ open, onClose, referral, onUpdated }) {
           </button>
         </div>
       </form>
+      <VoiceEntryBar voiceEntry={voiceEntry} />
     </Modal>
   )
 }
@@ -586,6 +600,8 @@ function OutcomeModal({ open, onClose, referral, onUpdated }) {
   const [form, setForm]     = useState({ maternal_outcome:'unknown', neonatal_outcome:'unknown', outcome_notes:'' })
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
+  const voiceFields = [{ key: 'outcome_notes', label: 'Outcome Notes', get: () => form.outcome_notes, set: (v) => setForm(f => ({ ...f, outcome_notes: v })) }]
+  const voiceEntry = useVoiceEntry(voiceFields)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -619,6 +635,7 @@ function OutcomeModal({ open, onClose, referral, onUpdated }) {
           </FormField>
         </div>
         <FormField label="Outcome Notes">
+          <VoiceEntryTrigger onClick={voiceEntry.start} count={voiceFields.length} className="mb-2" />
           <textarea rows={2} value={form.outcome_notes} onChange={e => setForm(f=>({...f,outcome_notes:e.target.value}))}
             className="input-field resize-none" placeholder="Additional notes..." />
         </FormField>
@@ -629,6 +646,7 @@ function OutcomeModal({ open, onClose, referral, onUpdated }) {
           </button>
         </div>
       </form>
+      <VoiceEntryBar voiceEntry={voiceEntry} />
     </Modal>
   )
 }

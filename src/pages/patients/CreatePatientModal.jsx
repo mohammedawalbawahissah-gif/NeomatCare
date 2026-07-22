@@ -3,6 +3,8 @@ import { Modal, Alert, FormField, Spinner } from '@/components/ui'
 import { UserCircle } from 'lucide-react'
 import { useOfflineQueue } from '@/contexts/OfflineQueueContext'
 import { QueueKinds } from '@/utils/offlineQueue'
+import VoiceEntryBar, { VoiceEntryTrigger } from '@/components/voice/VoiceEntryBar'
+import useVoiceEntry from '@/hooks/useVoiceEntry'
 
 const inputCls = 'w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-300 bg-white'
 const labelCls = 'block text-sm font-medium text-slate-700 mb-1'
@@ -19,6 +21,18 @@ export default function CreatePatientModal({ open, onClose, onCreated, onQueued 
   const { submitOrQueue } = useOfflineQueue()
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
+  const setVoiceField = k => (v) => setForm(f => ({ ...f, [k]: v }))
+  const voiceFields = [
+    { key: 'patient_name', label: 'Full Name', get: () => form.patient_name, set: setVoiceField('patient_name') },
+    { key: 'hospital_id', label: 'Hospital / Folder ID', get: () => form.hospital_id, set: setVoiceField('hospital_id') },
+    { key: 'patient_phone_number', label: 'Phone Number', get: () => form.patient_phone_number, set: setVoiceField('patient_phone_number') },
+    { key: 'town', label: 'Town / Community', get: () => form.town, set: setVoiceField('town') },
+    { key: 'next_of_kin_name', label: 'Next of Kin Name', get: () => form.next_of_kin_name, set: setVoiceField('next_of_kin_name') },
+    { key: 'next_of_kin_phone', label: 'Next of Kin Phone', get: () => form.next_of_kin_phone, set: setVoiceField('next_of_kin_phone') },
+    { key: 'next_of_kin_relationship', label: 'Next of Kin Relationship', get: () => form.next_of_kin_relationship, set: setVoiceField('next_of_kin_relationship') },
+    { key: 'notes', label: 'Notes', get: () => form.notes, set: setVoiceField('notes') },
+  ]
+  const voiceEntry = useVoiceEntry(voiceFields)
 
   const handleSave = async () => {
     if (!form.age) { setError('Age is required.'); return }
@@ -58,6 +72,7 @@ export default function CreatePatientModal({ open, onClose, onCreated, onQueued 
     <Modal open={open} onClose={onClose} title="New Patient Record" size="lg">
       <div className="space-y-4 max-h-[72vh] overflow-y-auto pr-1">
         {error && <Alert type="error" message={error}/>}
+        <VoiceEntryTrigger onClick={voiceEntry.start} count={voiceFields.length} />
 
         <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">Identity</p>
         <div className="grid grid-cols-2 gap-3">
@@ -137,6 +152,7 @@ export default function CreatePatientModal({ open, onClose, onCreated, onQueued 
           {saving ? <><Spinner size={14} className="text-white"/> Saving…</> : <><UserCircle size={14}/> Create Patient</>}
         </button>
       </div>
+      <VoiceEntryBar voiceEntry={voiceEntry} />
     </Modal>
   )
 }

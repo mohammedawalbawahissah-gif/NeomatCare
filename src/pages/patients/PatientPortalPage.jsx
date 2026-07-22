@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { patientApi, transportApi, wellnessApi } from '@/api/client'
+import VoiceEntryBar, { VoiceEntryTrigger } from '@/components/voice/VoiceEntryBar'
+import useVoiceEntry from '@/hooks/useVoiceEntry'
 import {
   Baby, Star, PhoneCall, Truck, HeartPulse,
   ChevronDown, ChevronUp, Send, Plus, AlertTriangle,
@@ -252,6 +254,8 @@ function CycleTrackerTab() {
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState({ period_start: '', period_end: '', notes: '' })
   const [submitting, setSubmitting] = useState(false)
+  const cycleVoiceFields = [{ key: 'notes', label: 'Notes', get: () => form.notes, set: (v) => setForm(f => ({ ...f, notes: v })) }]
+  const cycleVoiceEntry = useVoiceEntry(cycleVoiceFields)
 
   const load = () => {
     setLoading(true)
@@ -351,6 +355,7 @@ function CycleTrackerTab() {
           </div>
           <div>
             <label style={label}>Notes (optional)</label>
+            <VoiceEntryTrigger onClick={cycleVoiceEntry.start} count={cycleVoiceFields.length} />
             <input type="text" style={input} value={form.notes}
               onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any symptoms or notes" />
           </div>
@@ -358,6 +363,7 @@ function CycleTrackerTab() {
             <Plus size={15} /> {submitting ? 'Saving…' : 'Log entry'}
           </button>
         </form>
+        <VoiceEntryBar voiceEntry={cycleVoiceEntry} />
       </div>
 
       <div style={card}>
@@ -411,6 +417,11 @@ function ReviewsTab() {
   const [success, setSuccess] = useState(false)
   const [form, setForm] = useState({ visit_type:'anc', period:'pre_labour', facility_name:'', rating:0, comments:'' })
   const [error, setError] = useState('')
+  const reviewVoiceFields = [
+    { key: 'facility_name', label: 'Facility Name', get: () => form.facility_name, set: (v) => setForm(p => ({ ...p, facility_name: v })) },
+    { key: 'comments', label: 'Comments', get: () => form.comments, set: (v) => setForm(p => ({ ...p, comments: v })) },
+  ]
+  const reviewVoiceEntry = useVoiceEntry(reviewVoiceFields)
 
   const load = () => {
     setLoading(true)
@@ -477,6 +488,7 @@ function ReviewsTab() {
                 </select>
               </div>
             </div>
+            <VoiceEntryTrigger onClick={reviewVoiceEntry.start} count={reviewVoiceFields.length} />
             <div>
               <label style={label}>Facility Name <span style={{ color:'#94a3b8', fontWeight:400 }}>(optional)</span></label>
               <input value={form.facility_name} onChange={set('facility_name')} placeholder="e.g. Tamale Teaching Hospital" style={input} />
@@ -493,6 +505,7 @@ function ReviewsTab() {
               <Send size={15} />{submitting ? 'Submitting…' : 'Submit Review'}
             </button>
           </form>
+          <VoiceEntryBar voiceEntry={reviewVoiceEntry} />
         </div>
       )}
 
@@ -535,6 +548,11 @@ function OnCallTab() {
   const [submitting, setSubmitting] = useState(false)
   const [submitted,  setSubmitted]  = useState(false)
   const [error, setError] = useState('')
+  const voiceFields = [
+    { key: 'description', label: 'Describe your situation', get: () => form.description, set: (v) => setForm(p => ({ ...p, description: v })) },
+    { key: 'location', label: 'Your location / address', get: () => form.location, set: (v) => setForm(p => ({ ...p, location: v })) },
+  ]
+  const voiceEntry = useVoiceEntry(voiceFields)
 
   const set = key => e => setForm(p => ({ ...p, [key]: e.target.value }))
 
@@ -593,6 +611,7 @@ function OnCallTab() {
         </div>
 
         <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', gap:'0.875rem' }}>
+          <VoiceEntryTrigger onClick={voiceEntry.start} count={voiceFields.length} />
           <div>
             <label style={label}>Describe your situation <span style={{ color:'#e43418' }}>*</span></label>
             <textarea required value={form.description} onChange={set('description')} rows={3}
@@ -617,6 +636,7 @@ function OnCallTab() {
             <Send size={15} />{submitting ? 'Submitting…' : 'Submit Request'}
           </button>
         </form>
+        <VoiceEntryBar voiceEntry={voiceEntry} />
       </div>
     </div>
   )
@@ -640,6 +660,11 @@ function TransportTab() {
   const [submitting, setSubmitting] = useState(false)
   const [success,    setSuccess]    = useState(false)
   const [error,      setError]      = useState('')
+  const voiceFields = [
+    { key: 'pickup_address', label: 'Your pickup address', get: () => form.pickup_address, set: (v) => setForm(p => ({ ...p, pickup_address: v })) },
+    { key: 'notes', label: 'Additional notes', get: () => form.notes, set: (v) => setForm(p => ({ ...p, notes: v })) },
+  ]
+  const voiceEntry = useVoiceEntry(voiceFields)
 
   const load = () => {
     setLoading(true)
@@ -706,6 +731,7 @@ function TransportTab() {
           </div>
           <div>
             <label style={label}>Your pickup address <span style={{ color:'#e43418' }}>*</span></label>
+            <VoiceEntryTrigger onClick={voiceEntry.start} count={voiceFields.length} />
             <div style={{ position:'relative' }}>
               <MapPin size={15} style={{ position:'absolute', left:'10px', top:'50%', transform:'translateY(-50%)', color:'#94a3b8' }} />
               <input required value={form.pickup_address} onChange={set('pickup_address')} placeholder="e.g. Tamale, Choggu Yapala, near water tank" style={{ ...input, paddingLeft:'32px' }} />
@@ -737,6 +763,7 @@ function TransportTab() {
             <Truck size={16} />{submitting ? 'Sending request…' : 'Request Transport Now'}
           </button>
         </form>
+        <VoiceEntryBar voiceEntry={voiceEntry} />
       </div>
 
       {/* My requests */}

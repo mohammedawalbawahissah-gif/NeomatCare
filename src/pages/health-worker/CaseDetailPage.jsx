@@ -13,7 +13,8 @@ import { QueueKinds, isQueueItemFailed, MAX_RETRIES } from '@/utils/offlineQueue
 import { cachedFetch } from '@/utils/cachedFetch'
 import ReadAloudTrigger from '@/components/voice/ReadAloudBar'
 import useReadAloud from '@/hooks/useReadAloud'
-import DictateButton from '@/components/voice/DictateButton'
+import VoiceEntryBar, { VoiceEntryTrigger } from '@/components/voice/VoiceEntryBar'
+import useVoiceEntry from '@/hooks/useVoiceEntry'
 
 const ALL_DANGER_SIGNS = [
   'PPH','APH','RUPTURED_UTERUS','ECLAMPSIA','SEVERE_PRE_ECLAMPSIA',
@@ -211,6 +212,8 @@ function ReferralModal({ open, onClose, caseData }) {
   const [overrideReason, setOverrideReason] = useState('')
   const [creating, setCreating]           = useState(false)
   const [saveError, setSaveError]         = useState('')
+  const overrideVoiceFields = [{ key: 'override', label: 'Override Reason', get: () => overrideReason, set: setOverrideReason }]
+  const overrideVoiceEntry = useVoiceEntry(overrideVoiceFields)
 
   // Transport step state
   const [createdReferral, setCreatedReferral] = useState(null)
@@ -346,11 +349,10 @@ function ReferralModal({ open, onClose, caseData }) {
       )}
       {isOverride && (
         <FormField label="Override Reason" required hint="Required when selecting a different facility than recommended">
-          <div className="flex gap-2 items-start">
-            <textarea rows={2} value={overrideReason} onChange={e => setOverrideReason(e.target.value)}
-              className="input-field resize-none flex-1" placeholder="Explain why you're overriding the recommendation…"/>
-            <DictateButton onResult={(text) => setOverrideReason(v => (v ? v + ' ' : '') + text)} className="mt-1" />
-          </div>
+          <VoiceEntryTrigger onClick={overrideVoiceEntry.start} count={overrideVoiceFields.length} className="mb-2" />
+          <textarea rows={2} value={overrideReason} onChange={e => setOverrideReason(e.target.value)}
+            className="input-field resize-none w-full" placeholder="Explain why you're overriding the recommendation…"/>
+          <VoiceEntryBar voiceEntry={overrideVoiceEntry} />
         </FormField>
       )}
       {saveError && <Alert type="error" message={saveError}/>}

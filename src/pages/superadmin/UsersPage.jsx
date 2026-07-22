@@ -5,6 +5,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import { Users, Search, Building2, Mail, Clock, Plus, X, Save, Trash2, Edit2, KeyRound, Phone, CreditCard, CheckCircle } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import clsx from 'clsx'
+import VoiceEntryBar, { VoiceEntryTrigger } from '@/components/voice/VoiceEntryBar'
+import useVoiceEntry from '@/hooks/useVoiceEntry'
 
 const ROLE_LABELS = {
   health_worker:  'Health Worker',
@@ -47,6 +49,14 @@ function UserModal({ user, facilities, onClose, onSaved, currentUser }) {
 
   const isFacilityAdmin = currentUser?.role === 'facility_admin'
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
+  const voiceFields = [
+    { key: 'name', label: 'Full Name', get: () => form.name, set: (v) => setForm(f => ({ ...f, name: v })) },
+    ...(form.role === 'driver' ? [
+      { key: 'phone_number', label: 'Phone Number', get: () => form.phone_number, set: (v) => setForm(f => ({ ...f, phone_number: v })) },
+      { key: 'license_number', label: 'License Number', get: () => form.license_number, set: (v) => setForm(f => ({ ...f, license_number: v })) },
+    ] : []),
+  ]
+  const voiceEntry = useVoiceEntry(voiceFields)
 
   const needsFacility = FACILITY_ROLES.includes(form.role)
 
@@ -126,6 +136,7 @@ function UserModal({ user, facilities, onClose, onSaved, currentUser }) {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div style={{ gridColumn: '1 / -1' }}>
+                <VoiceEntryTrigger onClick={voiceEntry.start} count={voiceFields.length} className="mb-2" />
                 <label style={lbl}>Full Name *</label>
                 <input required value={form.name} onChange={set('name')} style={inp} placeholder="Full name" />
               </div>
@@ -210,6 +221,7 @@ function UserModal({ user, facilities, onClose, onSaved, currentUser }) {
             </button>
           </div>
         </form>
+        <VoiceEntryBar voiceEntry={voiceEntry} />
       </div>
     </div>
   )

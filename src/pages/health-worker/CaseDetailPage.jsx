@@ -11,7 +11,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useOfflineQueue } from '@/contexts/OfflineQueueContext'
 import { QueueKinds, isQueueItemFailed, MAX_RETRIES } from '@/utils/offlineQueue'
 import { cachedFetch } from '@/utils/cachedFetch'
-import SpeakButton from '@/components/voice/SpeakButton'
+import ReadAloudTrigger from '@/components/voice/ReadAloudBar'
+import useReadAloud from '@/hooks/useReadAloud'
 import DictateButton from '@/components/voice/DictateButton'
 
 const ALL_DANGER_SIGNS = [
@@ -898,6 +899,25 @@ export default function CaseDetailPage() {
   // Patient fields: EmergencyCaseDetailSerializer nests patient as PatientSerializer
   const p  = c.patient || {}
 
+  const vitalsSpoken = [
+    ['Systolic BP', vs.systolic_bp], ['Diastolic BP', vs.diastolic_bp], ['Heart Rate', vs.heart_rate],
+    ['Resp. Rate', vs.respiratory_rate], ['Temperature', vs.temperature], ['SpO2', vs.spo2],
+  ].filter(([, v]) => v !== null && v !== undefined && v !== '')
+
+  // Clinically load-bearing content, top-to-bottom as displayed. Labels are
+  // spoken, decorative chrome (icons, badges, empty/unknown fields) is not.
+  const readAloudItems = [
+    { label: 'Patient', text: `${p.patient_name || 'Unnamed patient'}, age ${p.age || 'unknown'}, ${p.town || 'location unknown'}` },
+    ...(c.gestational_age_weeks ? [{ label: 'Gestational age', text: `${c.gestational_age_weeks} weeks` }] : []),
+    ...(c.presenting_complaint ? [{ label: 'Presenting complaint', text: c.presenting_complaint }] : []),
+    ...((c.danger_signs || []).length ? [{ label: 'Danger signs', text: c.danger_signs.join(', ').replace(/_/g, ' ') }] : []),
+    ...(vitalsSpoken.length ? [{ label: 'Vital signs', text: vitalsSpoken.map(([k, v]) => `${k}: ${v}`).join(', ') }] : []),
+    ...(c.fetal_heart_rate ? [{ label: 'Fetal heart rate', text: `${c.fetal_heart_rate}` }] : []),
+    ...(c.obstetric_history ? [{ label: 'Obstetric history', text: c.obstetric_history }] : []),
+    ...(c.outcome_notes ? [{ label: 'Outcome notes', text: c.outcome_notes }] : []),
+  ]
+  const readAloud = useReadAloud(readAloudItems)
+
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6 animate-fade-in">
       <div className="flex items-center gap-3 flex-wrap">
@@ -906,6 +926,7 @@ export default function CaseDetailPage() {
           <h1 className="section-title">Emergency Case</h1>
           <p className="text-xs text-slate-400 font-mono mt-0.5">{c.id}</p>
         </div>
+        <ReadAloudTrigger readAloud={readAloud} />
         <div className="flex gap-2 flex-wrap shrink-0">
           {canEdit && <button onClick={() => setEditModal(true)} className="btn-secondary text-xs px-3 py-2"><Pencil size={13}/> Edit</button>}
           {canAction && (
@@ -949,10 +970,7 @@ export default function CaseDetailPage() {
           </div>
 
           <div className="card px-5 py-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Presenting Complaint</p>
-              <SpeakButton text={c.presenting_complaint} />
-            </div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Presenting Complaint</p>
             <p className="text-sm text-slate-800 leading-relaxed">{c.presenting_complaint}</p>
           </div>
 

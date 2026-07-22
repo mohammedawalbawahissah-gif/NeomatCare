@@ -4,8 +4,9 @@ import { casesApi, facilitiesApi, referralsApi, transportApi, consultationsApi, 
 import { useOfflineQueue } from '@/contexts/OfflineQueueContext'
 import { QueueKinds, isQueueItemFailed } from '@/utils/offlineQueue'
 import { cachedFetch } from '@/utils/cachedFetch'
-import DictateButton from '@/components/voice/DictateButton'
 import SpeakButton from '@/components/voice/SpeakButton'
+import VoiceEntryBar, { VoiceEntryTrigger } from '@/components/voice/VoiceEntryBar'
+import useVoiceEntry from '@/hooks/useVoiceEntry'
 import { StatusBadge, PageSpinner, EmptyState, DangerSignList, Spinner, FormField } from '@/components/ui'
 import { ClipboardList, Plus, Clock, AlertTriangle, AlertOctagon, X, ArrowRightLeft, Truck, Video, MapPin, CheckCircle, ChevronRight } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
@@ -490,6 +491,23 @@ function CreateCaseModal({ open, onClose, onCreated }) {
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
   const setVital = k => e => setForm(f => ({ ...f, vital_signs: { ...f.vital_signs, [k]: e.target.value } }))
+  const setVoiceField = k => (v) => setForm(f => ({ ...f, [k]: v }))
+
+  // Every free-text field on this form, in the order it's displayed.
+  // Dropdowns (blood group, membranes), the danger-sign multi-select, and
+  // number-only fields (age, ANC visits, gestational age, gravida, parity,
+  // vitals, fetal heart rate) are intentionally excluded — see useVoiceEntry.
+  const voiceFields = [
+    ...(!form.patient_id ? [
+      { key: 'patient_name', label: 'Patient Name', get: () => form.patient_name, set: setVoiceField('patient_name') },
+      { key: 'hospital_id', label: 'Hospital ID', get: () => form.hospital_id, set: setVoiceField('hospital_id') },
+      { key: 'patient_phone_number', label: 'Phone Number', get: () => form.patient_phone_number, set: setVoiceField('patient_phone_number') },
+      { key: 'patient_town', label: 'Town', get: () => form.patient_town, set: setVoiceField('patient_town') },
+    ] : []),
+    { key: 'obstetric_history', label: 'Obstetric History', get: () => form.obstetric_history, set: setVoiceField('obstetric_history') },
+    { key: 'presenting_complaint', label: 'Presenting Complaint', get: () => form.presenting_complaint, set: setVoiceField('presenting_complaint') },
+  ]
+  const voiceEntry = useVoiceEntry(voiceFields)
   const toggleSign = sign => setForm(f => ({
     ...f,
     danger_signs: f.danger_signs.includes(sign) ? f.danger_signs.filter(s => s !== sign) : [...f.danger_signs, sign],
@@ -613,6 +631,10 @@ function CreateCaseModal({ open, onClose, onCreated }) {
             <form onSubmit={handleSubmit} noValidate>
               {error && <div style={{background:'#fff4f2', border:'1px solid #ffd0c8', borderRadius:'8px', padding:'10px 14px', color:'#c02812', fontSize:'0.85rem', marginBottom:'16px'}}>{error}</div>}
 
+              <div style={{marginBottom:'16px'}}>
+                <VoiceEntryTrigger onClick={voiceEntry.start} count={voiceFields.length} />
+              </div>
+
               <p style={sectionStyle}>Patient Identity</p>
               <div style={gridStyle(2)}>
                 <div><label style={labelStyle}>Patient Name</label><input value={form.patient_name} onChange={set('patient_name')} placeholder="Full name" style={inputStyle}/></div>
@@ -652,23 +674,13 @@ function CreateCaseModal({ open, onClose, onCreated }) {
               </div>
               <div style={{marginBottom:'12px'}}>
                 <label style={labelStyle}>Obstetric History</label>
-                <div style={{display:'flex', gap:'8px', alignItems:'flex-start'}}>
-                  <textarea rows={2} value={form.obstetric_history} onChange={set('obstetric_history')} placeholder="Relevant prior complications or surgeries..." style={{...inputStyle, resize:'vertical', flex:1}}/>
-                  <div style={{paddingTop:'6px'}}>
-                    <DictateButton onResult={(text) => setForm(f => ({ ...f, obstetric_history: (f.obstetric_history ? f.obstetric_history + ' ' : '') + text }))} />
-                  </div>
-                </div>
+                <textarea rows={2} value={form.obstetric_history} onChange={set('obstetric_history')} placeholder="Relevant prior complications or surgeries..." style={{...inputStyle, resize:'vertical', width:'100%'}}/>
               </div>
 
               <p style={sectionStyle}>Clinical</p>
               <div style={{marginBottom:'12px'}}>
                 <label style={labelStyle}>Presenting Complaint <span style={{color:'#e43418'}}>*</span></label>
-                <div style={{display:'flex', gap:'8px', alignItems:'flex-start'}}>
-                  <textarea rows={2} value={form.presenting_complaint} onChange={set('presenting_complaint')} placeholder="Chief complaint in your own words..." style={{...inputStyle, resize:'vertical', flex:1}}/>
-                  <div style={{paddingTop:'6px'}}>
-                    <DictateButton onResult={(text) => setForm(f => ({ ...f, presenting_complaint: (f.presenting_complaint ? f.presenting_complaint + ' ' : '') + text }))} />
-                  </div>
-                </div>
+                <textarea rows={2} value={form.presenting_complaint} onChange={set('presenting_complaint')} placeholder="Chief complaint in your own words..." style={{...inputStyle, resize:'vertical', width:'100%'}}/>
               </div>
 
               <div style={{marginBottom:'16px'}}>
@@ -707,6 +719,7 @@ function CreateCaseModal({ open, onClose, onCreated }) {
                   {loading ? <><Spinner size={14} className="text-white"/> Creating…</> : 'Create Case →'}
                 </button>
               </div>
+              <VoiceEntryBar voiceEntry={voiceEntry} />
             </form>
           )}
           {step===2 && createdCase && (

@@ -16,9 +16,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { aiApi } from '@/api/ai'
+import { startListening, speak, stopSpeaking, getVoiceLanguage, LANGUAGES } from '@/services/voice'
 import {
   Heart, X, Send, ChevronDown, RefreshCw,
-  Sparkles, AlertCircle, Loader2, Bot,
+  Sparkles, AlertCircle, Loader2, Bot, Mic, Square, Volume2, VolumeX,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -62,10 +63,10 @@ function RenderMessage({ text }) {
 }
 
 // ── Message bubble ────────────────────────────────────────────────────────────
-function MessageBubble({ msg, accentColor }) {
+function MessageBubble({ msg, accentColor, canSpeak, speaking, onSpeak }) {
   const isUser = msg.role === 'user'
   return (
-    <div className={clsx('flex gap-2 mb-3', isUser ? 'flex-row-reverse' : 'flex-row')}>
+    <div className={clsx('flex gap-2 mb-3 items-end', isUser ? 'flex-row-reverse' : 'flex-row')}>
       {!isUser && (
         <div
           className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5"
@@ -88,6 +89,15 @@ function MessageBubble({ msg, accentColor }) {
           : <RenderMessage text={msg.content} />
         }
       </div>
+      {!isUser && canSpeak && (
+        <button
+          onClick={onSpeak}
+          title={speaking ? 'Stop reading' : 'Read this reply aloud'}
+          className="p-1 text-slate-300 hover:text-slate-500 transition-colors shrink-0 mb-1"
+        >
+          {speaking ? <VolumeX size={12} /> : <Volume2 size={12} />}
+        </button>
+      )}
     </div>
   )
 }
@@ -109,6 +119,54 @@ export default function AssistantWidget({ context = {} }) {
   const [error, setError]     = useState('')
   const bottomRef             = useRef(null)
   const inputRef              = useRef(null)
+
+  // ── Voice: dictate the input, and read replies aloud ─────────────────────
+  const [micState, setMicState] = useState('idle') // idle | listening | transcribing
+  const [micError, setMicError] = useState('')
+  const [speakingIndex, setSpeakingIndex] = useState(-1) // -1 idle, -2 "read all" in progress
+  const micStopRef = useRef(null)
+  const readAllCancelledRef = useRef(false)
+  const lang = getVoiceLanguage()
+  const langInfo = LANGUAGES.find(l => l.code === lang)
+
+  const toggleMic = () => {
+    if (micState === 'listening') {
+      if (lang !== 'en') setMicState('transcribing')
+      micStopRef.current?.()
+      return
+    }
+    if (micState !== 'idle') return
+    setMicError('')
+    setMicState('listening')
+    micStopRef.current = startListening(lang, {
+      onResult: (text) => setInput(prev => (prev ? `${prev} ${text}` : text)),
+      onError: (err) => { setMicError(err.message); setMicState('idle') },
+      onEnd: () => setMicState('idle'),
+    })
+  }
+
+  const speakOne = async (i, text) => {
+    if (speakingIndex === i) { stopSpeaking(); setSpeakingIndex(-1); return }
+    stopSpeaking()
+    readAllCancelledRef.current = true // interrupts any in-progress "read all"
+    setSpeakingIndex(i)
+    try { await speak(text, lang) } catch { /* convenience feature, fail quietly */ }
+    finally { setSpeakingIndex(cur => (cur === i ? -1 : cur)) }
+  }
+
+  const readAllReplies = async () => {
+    if (speakingIndex === -2) { stopSpeaking(); readAllCancelledRef.current = true; setSpeakingIndex(-1); return }
+    stopSpeaking()
+    readAllCancelledRef.current = false
+    setSpeakingIndex(-2)
+    for (const m of messages) {
+      if (readAllCancelledRef.current) break
+      if (m.role !== 'assistant') continue
+      try { await speak(m.content, lang) } catch { /* skip to next on failure */ }
+    }
+    if (!readAllCancelledRef.current) setSpeakingIndex(-1)
+  }
+
 
   // Persist open state
   useEffect(() => {
@@ -196,6 +254,15 @@ export default function AssistantWidget({ context = {} }) {
             <div className="flex-1 min-w-0">
               <p className="text-white text-sm font-semibold leading-tight">{config.label}</p>
             </div>
+            {langInfo?.readAloud && (
+              <button
+                onClick={readAllReplies}
+                title={speakingIndex === -2 ? 'Stop reading' : 'Read all replies aloud'}
+                className="p-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/20 transition-colors"
+              >
+                {speakingIndex === -2 ? <VolumeX size={14} /> : <Volume2 size={14} />}
+              </button>
+            )}
             <button
               onClick={clearChat}
               title="Clear chat"
@@ -214,7 +281,12 @@ export default function AssistantWidget({ context = {} }) {
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 py-3">
             {messages.map((msg, i) => (
-              <MessageBubble key={i} msg={msg} accentColor={config.accent} />
+              <MessageBubble
+                key={i} msg={msg} accentColor={config.accent}
+                canSpeak={langInfo?.readAloud && msg.role === 'assistant'}
+                speaking={speakingIndex === i}
+                onSpeak={() => speakOne(i, msg.content)}
+              />
             ))}
 
             {loading && (
@@ -250,7 +322,23 @@ export default function AssistantWidget({ context = {} }) {
 
           {/* Input */}
           <div className="px-3 pb-3">
+            {micError && <p className="text-[11px] text-danger-600 mb-1 px-1">{micError}</p>}
             <div className="flex gap-2 items-end bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-300/30 transition-all">
+              {langInfo?.dictation && (
+                <button
+                  onClick={toggleMic}
+                  disabled={micState === 'transcribing'}
+                  title={micState === 'listening' ? 'Stop dictation' : 'Dictate your question'}
+                  className={clsx(
+                    'p-1.5 rounded-lg transition-colors shrink-0',
+                    micState === 'listening' ? 'bg-danger-500 text-white animate-pulse'
+                      : micState === 'transcribing' ? 'text-slate-300 cursor-not-allowed'
+                      : 'text-slate-400 hover:text-slate-600',
+                  )}
+                >
+                  {micState === 'transcribing' ? <Loader2 size={15} className="animate-spin" /> : micState === 'listening' ? <Square size={14} /> : <Mic size={15} />}
+                </button>
+              )}
               <textarea
                 ref={inputRef}
                 value={input}

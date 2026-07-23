@@ -15,6 +15,8 @@ Install:
 
 import os
 import logging
+import socket
+from contextlib import contextmanager
 
 import africastalking
 from django.utils import timezone
@@ -27,6 +29,24 @@ africastalking.initialize(
     api_key=os.environ.get("AT_API_KEY", ""),
 )
 _sms = africastalking.SMS
+
+# The africastalking SDK doesn't expose a timeout parameter on SMS.send(),
+# so a hung connection to their API used to block whatever request/signal
+# called send_sms() indefinitely — for referral or consultation status
+# changes, that's the HTTP request that triggered the status change. This
+# bounds it. (See apps/notifications/services.py for the same issue on the
+# separate in-app-notification delivery path, fixed the same way there.)
+_SMS_SOCKET_TIMEOUT_SECONDS = 10
+
+
+@contextmanager
+def _bounded_socket_timeout():
+    previous = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(_SMS_SOCKET_TIMEOUT_SECONDS)
+    try:
+        yield
+    finally:
+        socket.setdefaulttimeout(previous)
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -47,7 +67,8 @@ def send_sms(phone: str, message: str) -> bool:
         return False
 
     try:
-        response = _sms.send(message, [phone])
+        with _bounded_socket_timeout():
+            response = _sms.send(message, [phone])
         recipients = response.get("SMSMessageData", {}).get("Recipients", [])
         if recipients and recipients[0].get("status") == "Success":
             logger.info("SMS sent → %s", phone)

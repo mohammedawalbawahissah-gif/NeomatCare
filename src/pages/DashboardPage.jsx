@@ -5,12 +5,16 @@ import { StatCard, StatusBadge, PageSpinner, DangerSignList } from '@/components
 import { ClipboardList, ArrowRightLeft, Truck, Video, AlertTriangle, Clock, UserCircle, Calendar } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { Link, Navigate } from 'react-router-dom'
+import VoiceEntryBar, { VoiceEntryTrigger } from '@/components/voice/VoiceEntryBar'
+import useVoiceEntry from '@/hooks/useVoiceEntry'
 
 // ── Health Worker Dashboard ───────────────────────────────────────────────────
 // ── Follow-up Scheduling ─────────────────────────────────────────────────────
 function FollowUpSection({ followUps, patients, onAdd, onComplete }) {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm]         = useState({ patientName:'', patientId:'', note:'', dueDate:'' })
+  const voiceFields = [{ key: 'note', label: 'Follow-up Note', get: () => form.note, set: (v) => setForm(f => ({ ...f, note: v })) }]
+  const voiceEntry = useVoiceEntry(voiceFields)
 
   const handleAdd = (e) => {
     e.preventDefault()
@@ -60,6 +64,7 @@ function FollowUpSection({ followUps, patients, onAdd, onComplete }) {
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Follow-up Note</label>
+            <VoiceEntryTrigger onClick={voiceEntry.start} count={voiceFields.length} className="mb-2" />
             <input value={form.note} onChange={e => setForm(f => ({...f, note: e.target.value}))} placeholder="e.g. Postnatal check at 6 weeks, BP monitoring…" className="input-field text-sm"/>
           </div>
           <div className="flex gap-2">
@@ -68,6 +73,7 @@ function FollowUpSection({ followUps, patients, onAdd, onComplete }) {
           </div>
         </form>
       )}
+      <VoiceEntryBar voiceEntry={voiceEntry} />
 
       <div className="divide-y divide-slate-50">
         {followUps.length === 0 && (

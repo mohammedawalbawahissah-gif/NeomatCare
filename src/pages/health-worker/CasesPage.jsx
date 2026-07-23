@@ -486,8 +486,6 @@ function CreateCaseModal({ open, onClose, onCreated }) {
     }
   }, [open])
 
-  if (!open) return null
-
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
   const setVital = k => e => setForm(f => ({ ...f, vital_signs: { ...f.vital_signs, [k]: e.target.value } }))
   const setVoiceField = k => (v) => setForm(f => ({ ...f, [k]: v }))
@@ -496,6 +494,10 @@ function CreateCaseModal({ open, onClose, onCreated }) {
   // Dropdowns (blood group, membranes), the danger-sign multi-select, and
   // number-only fields (age, ANC visits, gestational age, gravida, parity,
   // vitals, fetal heart rate) are intentionally excluded — see useVoiceEntry.
+  // Declared (and useVoiceEntry called) before the `if (!open)` guard below
+  // so this hook runs unconditionally on every render (Rules of Hooks) —
+  // this was previously placed after the guard, which crashed React with a
+  // "rendered fewer hooks than expected" error the moment this modal opened.
   const voiceFields = [
     ...(!form.patient_id ? [
       { key: 'patient_name', label: 'Patient Name', get: () => form.patient_name, set: setVoiceField('patient_name') },
@@ -507,6 +509,9 @@ function CreateCaseModal({ open, onClose, onCreated }) {
     { key: 'presenting_complaint', label: 'Presenting Complaint', get: () => form.presenting_complaint, set: setVoiceField('presenting_complaint') },
   ]
   const voiceEntry = useVoiceEntry(voiceFields)
+
+  if (!open) return null
+
   const toggleSign = sign => setForm(f => ({
     ...f,
     danger_signs: f.danger_signs.includes(sign) ? f.danger_signs.filter(s => s !== sign) : [...f.danger_signs, sign],

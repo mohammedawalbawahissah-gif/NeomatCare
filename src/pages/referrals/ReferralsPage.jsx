@@ -7,6 +7,8 @@ import { formatDistanceToNow, format } from 'date-fns'
 import HandoverBriefPanel from '@/components/ai/HandoverBriefPanel'
 import VoiceEntryBar, { VoiceEntryTrigger } from '@/components/voice/VoiceEntryBar'
 import useVoiceEntry from '@/hooks/useVoiceEntry'
+import ReadAloudTrigger from '@/components/voice/ReadAloudBar'
+import useReadAloud from '@/hooks/useReadAloud'
 
 // ── Referral List ─────────────────────────────────────────────────────────────
 export function ReferralsPage() {
@@ -666,6 +668,19 @@ export function ReferralDetailPage() {
       .finally(() => setLoading(false))
   }, [id])
 
+  // Hooks must run unconditionally on every render, so this is computed
+  // before the loading/not-found early-returns below, using a safe fallback.
+  const rSafe = referral || {}
+  const [handoverSpeakable, setHandoverSpeakable] = useState(null)
+  const readAloudItems = [
+    { label: 'Route', text: `From ${rSafe.referring_facility_name || 'unknown'} to ${rSafe.receiving_facility_name || 'unknown'}` },
+    ...(rSafe.override_reason ? [{ label: 'Override reason', text: rSafe.override_reason }] : []),
+    ...((rSafe.maternal_outcome && rSafe.maternal_outcome !== 'unknown') || (rSafe.neonatal_outcome && rSafe.neonatal_outcome !== 'unknown') ? [{ label: 'Outcomes', text: `Maternal: ${rSafe.maternal_outcome}, Neonatal: ${rSafe.neonatal_outcome}` }] : []),
+    ...(rSafe.outcome_notes ? [{ label: 'Outcome notes', text: rSafe.outcome_notes }] : []),
+    ...(handoverSpeakable ? [{ label: 'AI handover brief', text: handoverSpeakable }] : []),
+  ]
+  const readAloud = useReadAloud(readAloudItems)
+
   if (loading) return <PageSpinner />
   if (!referral) return <div className="p-6"><Alert type="error" message="Referral not found." /></div>
 
@@ -685,6 +700,8 @@ export function ReferralDetailPage() {
         </div>
         <StatusBadge status={r.status} />
       </div>
+
+      <ReadAloudTrigger readAloud={readAloud} />
 
       <div className="grid lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 space-y-5">
@@ -757,7 +774,7 @@ export function ReferralDetailPage() {
         {/* Sidebar */}
         <div className="space-y-4">
           {/* AI Handover Brief */}
-          <HandoverBriefPanel referralId={r.id} />
+          <HandoverBriefPanel referralId={r.id} onSpeakableText={setHandoverSpeakable} />
 
           <div className="card px-5 py-4 space-y-3">
             <div><p className="text-xs text-slate-400">Created by</p><p className="text-sm font-medium text-slate-800">{r.created_by_name}</p></div>

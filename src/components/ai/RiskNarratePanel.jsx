@@ -10,11 +10,10 @@
  *   riskFlags  {Array}   - Raw risk flag strings from backend
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { aiApi } from '@/api/ai'
 import { Sparkles, AlertCircle, Loader2, ChevronDown, ChevronUp, Lightbulb } from 'lucide-react'
 import clsx from 'clsx'
-import SpeakButton from '@/components/voice/SpeakButton'
 
 const RISK_BORDER = {
   high:   'border-red-200 bg-red-50',
@@ -28,7 +27,7 @@ const RISK_HEADER = {
   low:    'bg-emerald-600',
 }
 
-export default function RiskNarratePanel({ patientId, riskLevel, riskFlags }) {
+export default function RiskNarratePanel({ patientId, riskLevel, riskFlags, onSpeakableText }) {
   const [result,   setResult]   = useState(null)
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState('')
@@ -41,6 +40,8 @@ export default function RiskNarratePanel({ patientId, riskLevel, riskFlags }) {
     result.action_points?.length ? `Action points: ${result.action_points.join('. ')}.` : '',
     result.urgency_note,
   ].filter(Boolean).join(' ')
+
+  useEffect(() => { onSpeakableText?.(speakableText || null) }, [speakableText])
 
   const narrate = async () => {
     setLoading(true); setError(''); setResult(null)
@@ -61,7 +62,6 @@ export default function RiskNarratePanel({ patientId, riskLevel, riskFlags }) {
       <div className={clsx('flex items-center gap-2.5 px-4 py-2.5', RISK_HEADER[level] || RISK_HEADER.low)}>
         <Sparkles size={14} className="text-white" />
         <span className="text-white text-sm font-semibold flex-1">AI Risk Explanation</span>
-        {result && <SpeakButton text={speakableText} className="!bg-white/20 !text-white hover:!bg-white/30" />}
         {result && (
           <button
             onClick={() => setExpanded(e => !e)}

@@ -642,6 +642,8 @@ function TransportModal({ open, onClose, caseId }) {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState('')
+  const [transportSpeakable, setTransportSpeakable] = useState(null)
+  const transportReadAloud = useReadAloud(transportSpeakable ? [{ label: 'AI transport recommendation', text: transportSpeakable }] : [])
 
   useEffect(() => {
     if (!open) return
@@ -669,11 +671,15 @@ function TransportModal({ open, onClose, caseId }) {
       <div className="space-y-4">
         {/* AI dispatch recommendation — analyses case urgency + available vehicles */}
         {caseId && !loading && (
-          <TransportRecommendPanel
-            caseId={caseId}
-            availableVehicles={available}
-            onSelect={(vehicleId) => setForm(f => ({ ...f, vehicle: vehicleId }))}
-          />
+          <>
+            <ReadAloudTrigger readAloud={transportReadAloud} />
+            <TransportRecommendPanel
+              caseId={caseId}
+              availableVehicles={available}
+              onSelect={(vehicleId) => setForm(f => ({ ...f, vehicle: vehicleId }))}
+              onSpeakableText={setTransportSpeakable}
+            />
+          </>
         )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <FormField label="Select Vehicle">
@@ -893,6 +899,37 @@ export default function CaseDetailPage() {
     setAddingNote(false)
   }
 
+  // Hooks must run unconditionally on every render, so all of this is
+  // computed before the loading/error early-returns below, using a safe
+  // fallback for the case data.
+  const cSafe = caseData || {}
+  const vsSafe = cSafe.vital_signs || {}
+  const pSafe = cSafe.patient || {}
+  const vitalsSpokenSafe = [
+    ['Systolic BP', vsSafe.systolic_bp], ['Diastolic BP', vsSafe.diastolic_bp], ['Heart Rate', vsSafe.heart_rate],
+    ['Resp. Rate', vsSafe.respiratory_rate], ['Temperature', vsSafe.temperature], ['SpO2', vsSafe.spo2],
+  ].filter(([, v]) => v !== null && v !== undefined && v !== '')
+  const [triageSpeakable, setTriageSpeakable] = useState(null)
+  const [handoverSpeakable, setHandoverSpeakable] = useState(null)
+
+  // Clinically load-bearing content, top-to-bottom as displayed. Labels are
+  // spoken, decorative chrome (icons, badges, empty/unknown fields) is not.
+  // AI panel output is appended once generated, reported up via each
+  // panel's onSpeakableText prop.
+  const readAloudItems = [
+    { label: 'Patient', text: `${pSafe.patient_name || 'Unnamed patient'}, age ${pSafe.age || 'unknown'}, ${pSafe.town || 'location unknown'}` },
+    ...(cSafe.gestational_age_weeks ? [{ label: 'Gestational age', text: `${cSafe.gestational_age_weeks} weeks` }] : []),
+    ...(cSafe.presenting_complaint ? [{ label: 'Presenting complaint', text: cSafe.presenting_complaint }] : []),
+    ...((cSafe.danger_signs || []).length ? [{ label: 'Danger signs', text: cSafe.danger_signs.join(', ').replace(/_/g, ' ') }] : []),
+    ...(vitalsSpokenSafe.length ? [{ label: 'Vital signs', text: vitalsSpokenSafe.map(([k, v]) => `${k}: ${v}`).join(', ') }] : []),
+    ...(cSafe.fetal_heart_rate ? [{ label: 'Fetal heart rate', text: `${cSafe.fetal_heart_rate}` }] : []),
+    ...(cSafe.obstetric_history ? [{ label: 'Obstetric history', text: cSafe.obstetric_history }] : []),
+    ...(cSafe.outcome_notes ? [{ label: 'Outcome notes', text: cSafe.outcome_notes }] : []),
+    ...(triageSpeakable ? [{ label: 'AI triage analysis', text: triageSpeakable }] : []),
+    ...(handoverSpeakable ? [{ label: 'AI handover brief', text: handoverSpeakable }] : []),
+  ]
+  const readAloud = useReadAloud(readAloudItems)
+
   if (loading) return <PageSpinner/>
   if (error)   return <div className="p-6"><Alert type="error" message={error}/></div>
 
@@ -901,24 +938,7 @@ export default function CaseDetailPage() {
   // Patient fields: EmergencyCaseDetailSerializer nests patient as PatientSerializer
   const p  = c.patient || {}
 
-  const vitalsSpoken = [
-    ['Systolic BP', vs.systolic_bp], ['Diastolic BP', vs.diastolic_bp], ['Heart Rate', vs.heart_rate],
-    ['Resp. Rate', vs.respiratory_rate], ['Temperature', vs.temperature], ['SpO2', vs.spo2],
-  ].filter(([, v]) => v !== null && v !== undefined && v !== '')
-
-  // Clinically load-bearing content, top-to-bottom as displayed. Labels are
-  // spoken, decorative chrome (icons, badges, empty/unknown fields) is not.
-  const readAloudItems = [
-    { label: 'Patient', text: `${p.patient_name || 'Unnamed patient'}, age ${p.age || 'unknown'}, ${p.town || 'location unknown'}` },
-    ...(c.gestational_age_weeks ? [{ label: 'Gestational age', text: `${c.gestational_age_weeks} weeks` }] : []),
-    ...(c.presenting_complaint ? [{ label: 'Presenting complaint', text: c.presenting_complaint }] : []),
-    ...((c.danger_signs || []).length ? [{ label: 'Danger signs', text: c.danger_signs.join(', ').replace(/_/g, ' ') }] : []),
-    ...(vitalsSpoken.length ? [{ label: 'Vital signs', text: vitalsSpoken.map(([k, v]) => `${k}: ${v}`).join(', ') }] : []),
-    ...(c.fetal_heart_rate ? [{ label: 'Fetal heart rate', text: `${c.fetal_heart_rate}` }] : []),
-    ...(c.obstetric_history ? [{ label: 'Obstetric history', text: c.obstetric_history }] : []),
-    ...(c.outcome_notes ? [{ label: 'Outcome notes', text: c.outcome_notes }] : []),
-  ]
-  const readAloud = useReadAloud(readAloudItems)
+  const vitalsSpoken = vitalsSpokenSafe
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6 animate-fade-in">
@@ -1008,6 +1028,7 @@ export default function CaseDetailPage() {
                 <TriageAIPanel
                   note={note}
                   caseId={c.id}
+                  onSpeakableText={setTriageSpeakable}
                   onApply={() => setEditModal(true)}
                 />
               )}
@@ -1022,7 +1043,7 @@ export default function CaseDetailPage() {
 
           {/* AI Handover Brief */}
           {canAction && c.id && (
-            <HandoverBriefPanel caseId={c.id} />
+            <HandoverBriefPanel caseId={c.id} onSpeakableText={setHandoverSpeakable} />
           )}
         </div>
 

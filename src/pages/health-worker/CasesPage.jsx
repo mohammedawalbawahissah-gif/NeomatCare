@@ -4,7 +4,6 @@ import { casesApi, facilitiesApi, referralsApi, transportApi, consultationsApi, 
 import { useOfflineQueue } from '@/contexts/OfflineQueueContext'
 import { QueueKinds, isQueueItemFailed } from '@/utils/offlineQueue'
 import { cachedFetch } from '@/utils/cachedFetch'
-import SpeakButton from '@/components/voice/SpeakButton'
 import VoiceEntryBar, { VoiceEntryTrigger } from '@/components/voice/VoiceEntryBar'
 import useVoiceEntry from '@/hooks/useVoiceEntry'
 import { StatusBadge, PageSpinner, EmptyState, DangerSignList, Spinner, FormField } from '@/components/ui'

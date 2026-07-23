@@ -306,6 +306,10 @@ export default function PatientDetailPage() {
     ...(pSafe.notes ? [{ label: 'Background notes', text: pSafe.notes }] : []),
   ]
   const overviewReadAloud = useReadAloud(overviewReadAloudItems)
+  const [riskSpeakable, setRiskSpeakable] = useState(null)
+  const riskReadAloud = useReadAloud(riskSpeakable ? [{ label: 'AI risk explanation', text: riskSpeakable }] : [])
+  const [ancSpeakable, setAncSpeakable] = useState(null)
+  const ancReadAloud = useReadAloud(ancSpeakable ? [{ label: 'AI ANC pattern analysis', text: ancSpeakable }] : [])
 
   if (loading) return <PageSpinner/>
   if (error)   return <div className="p-6"><Alert type="error" message={error}/></div>
@@ -362,11 +366,15 @@ export default function PatientDetailPage() {
 
       {/* AI Risk Narration */}
       {p.risk_level && p.risk_flags?.length > 0 && (
-        <RiskNarratePanel
-          patientId={p.id}
-          riskLevel={p.risk_level}
-          riskFlags={p.risk_flags}
-        />
+        <>
+          <ReadAloudTrigger readAloud={riskReadAloud} />
+          <RiskNarratePanel
+            patientId={p.id}
+            riskLevel={p.risk_level}
+            riskFlags={p.risk_flags}
+            onSpeakableText={setRiskSpeakable}
+          />
+        </>
       )}
 
       {/* Tabs */}
@@ -448,9 +456,11 @@ export default function PatientDetailPage() {
             </div>
           )}
           {/* AI ANC Anomaly Detection */}
+          <ReadAloudTrigger readAloud={ancReadAloud} />
           <ANCAnomalyPanel
             patientId={p.id}
             visitCount={p.anc_visit_log?.length || 0}
+            onSpeakableText={setAncSpeakable}
           />
           {!p.anc_visit_log?.length && !queuedAncVisits.length ? (
             <div className="card px-5 py-8 text-center">

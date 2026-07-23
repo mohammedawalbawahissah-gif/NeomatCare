@@ -11,11 +11,10 @@
  *                           called when health worker clicks "Apply suggestions"
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { aiApi } from '@/api/ai'
 import { Sparkles, CheckCircle, AlertCircle, Loader2, ChevronDown, ChevronUp } from 'lucide-react'
 import clsx from 'clsx'
-import SpeakButton from '@/components/voice/SpeakButton'
 
 const SEVERITY_COLORS = {
   critical: 'bg-red-100 text-red-700 border-red-200',
@@ -30,7 +29,7 @@ const CONFIDENCE_COLORS = {
   low:    'text-red-600',
 }
 
-export default function TriageAIPanel({ note, caseId, onApply }) {
+export default function TriageAIPanel({ note, caseId, onApply, onSpeakableText }) {
   const [result,   setResult]   = useState(null)
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState('')
@@ -64,6 +63,8 @@ export default function TriageAIPanel({ note, caseId, onApply }) {
     result.missing_fields?.length ? `Missing clinical fields: ${result.missing_fields.join(', ')}.` : '',
   ].filter(Boolean).join(' ')
 
+  useEffect(() => { onSpeakableText?.(speakableText || null) }, [speakableText])
+
   return (
     <div className="border border-brand-200 rounded-xl bg-brand-50 overflow-hidden">
       {/* Header */}
@@ -80,11 +81,6 @@ export default function TriageAIPanel({ note, caseId, onApply }) {
         <span className="text-sm font-semibold text-brand-800 flex-1 text-left">
           AI Triage Analysis
         </span>
-        {result && (
-          <span onClick={(e) => e.stopPropagation()}>
-            <SpeakButton text={speakableText} />
-          </span>
-        )}
         <span className="text-[11px] text-brand-600 mr-1">
           {result ? 'Results ready' : 'Analyse note'}
         </span>

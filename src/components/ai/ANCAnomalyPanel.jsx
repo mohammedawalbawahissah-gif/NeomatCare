@@ -9,11 +9,10 @@
  *   visitCount  {number}  - Number of visits (to decide whether to show)
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { aiApi } from '@/api/ai'
 import { Sparkles, AlertTriangle, CheckCircle, Loader2, AlertCircle, Info } from 'lucide-react'
 import clsx from 'clsx'
-import SpeakButton from '@/components/voice/SpeakButton'
 
 const SEVERITY_CONFIG = {
   high:   { color: 'text-red-700',    bg: 'bg-red-50 border-red-200',    icon: AlertTriangle },
@@ -21,7 +20,7 @@ const SEVERITY_CONFIG = {
   low:    { color: 'text-blue-700',   bg: 'bg-blue-50 border-blue-200',   icon: Info },
 }
 
-export default function ANCAnomalyPanel({ patientId, visitCount }) {
+export default function ANCAnomalyPanel({ patientId, visitCount, onSpeakableText }) {
   const [result,  setResult]  = useState(null)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
@@ -38,6 +37,17 @@ export default function ANCAnomalyPanel({ patientId, visitCount }) {
     }
   }
 
+  // Computed and reported before the visitCount early-return below, so this
+  // hook runs unconditionally on every render (Rules of Hooks).
+  const speakableText = result?.data && [
+    result.data.summary,
+    result.data.recommended_risk_escalation ? 'Risk level re-computed — patient risk may have escalated.' : '',
+    result.data.patterns?.length
+      ? `Detected patterns: ${result.data.patterns.map(p => `${p.type.replace(/_/g, ' ')}: ${p.description}`).join('. ')}.`
+      : '',
+  ].filter(Boolean).join(' ')
+  useEffect(() => { onSpeakableText?.(speakableText || null) }, [speakableText])
+
   if (visitCount < 2) {
     return (
       <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
@@ -47,21 +57,12 @@ export default function ANCAnomalyPanel({ patientId, visitCount }) {
     )
   }
 
-  const speakableText = result?.data && [
-    result.data.summary,
-    result.data.recommended_risk_escalation ? 'Risk level re-computed — patient risk may have escalated.' : '',
-    result.data.patterns?.length
-      ? `Detected patterns: ${result.data.patterns.map(p => `${p.type.replace(/_/g, ' ')}: ${p.description}`).join('. ')}.`
-      : '',
-  ].filter(Boolean).join(' ')
-
   return (
     <div className="border border-slate-200 rounded-xl bg-slate-50 overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-2.5 px-4 py-3 bg-slate-800">
         <Sparkles size={14} className="text-brand-400" />
         <span className="text-white text-sm font-semibold flex-1">AI ANC Pattern Analysis</span>
-        {result && <SpeakButton text={speakableText} className="!bg-white/20 !text-white hover:!bg-white/30" />}
         <span className="text-slate-400 text-[11px]">{visitCount} visits</span>
       </div>
 

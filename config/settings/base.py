@@ -250,11 +250,6 @@ EMAIL_USE_TLS    = env.bool("EMAIL_USE_TLS", default=True)
 EMAIL_HOST_USER  = env("EMAIL_HOST_USER",  default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 DEFAULT_FROM_EMAIL  = env("DEFAULT_FROM_EMAIL",  default="NeoMatCare <noreply@neomatcare.gh>")
-# Django's SMTP backend has no timeout by default and will block the calling
-# thread indefinitely on a hung connection. Notification email now sends
-# from a background thread (see apps/notifications/services.py), but this
-# keeps that thread itself bounded rather than accumulating forever.
-EMAIL_TIMEOUT    = env.int("EMAIL_TIMEOUT", default=10)
 
 # ── SMS (Africa's Talking — set via environment variables) ──────────────────
 AT_USERNAME = env("AT_USERNAME", default="sandbox")

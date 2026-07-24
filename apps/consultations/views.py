@@ -3,8 +3,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 from django_filters.rest_framework import DjangoFilterBackend
-from .models import SpecialistProfile, Consultation, ConsultationMessage
-from .serializers import SpecialistProfileSerializer, ConsultationSerializer, ConsultationMessageSerializer
+from .models import SpecialistProfile, Consultation, ConsultationMessage, CallSignal
+from .serializers import SpecialistProfileSerializer, ConsultationSerializer, ConsultationMessageSerializer, CallSignalSerializer
 
 
 class SpecialistProfileViewSet(viewsets.ModelViewSet):
@@ -109,3 +109,31 @@ class ConsultationViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save(consultation=consultation, sender=request.user)
         return Response(serializer.data, status=201)
+
+    @action(detail=True, methods=["get", "post"], url_path="call-signals")
+    def call_signals(self, request, pk=None):
+        """
+        Polling-based WebRTC signaling exchange. GET returns everything (or,
+        with ?since=<ISO timestamp>, only what's new) so the client only
+        applies signals it hasn't seen yet rather than replaying the whole
+        history every poll. POST appends one signal — an offer, an answer,
+        one ICE candidate, or a hangup notice.
+        """
+        consultation = self.get_object()
+        if request.method == "GET":
+            signals = consultation.call_signals.all()
+            since = request.query_params.get("since")
+            if since:
+                signals = signals.filter(created_at__gt=since)
+            return Response(CallSignalSerializer(signals, many=True).data)
+        serializer = CallSignalSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(consultation=consultation, sender=request.user)
+        return Response(serializer.data, status=201)
+
+    @action(detail=True, methods=["post"], url_path="call-end")
+    def call_end(self, request, pk=None):
+        """Clears prior signaling history so a fresh call can start clean next time, after logging a hangup for whoever's still polling."""
+        consultation = self.get_object()
+        CallSignal.objects.create(consultation=consultation, sender=request.user, kind="hangup", payload={})
+        return Response(status=204)

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import SpecialistProfile, Consultation, ConsultationMessage
+from .models import SpecialistProfile, Consultation, ConsultationMessage, CallSignal
 from apps.accounts.models import User
 
 
@@ -48,6 +48,15 @@ class ConsultationMessageSerializer(serializers.ModelSerializer):
     class Meta:
         model  = ConsultationMessage
         fields = ["id", "consultation", "sender", "sender_name", "body", "created_at"]
+        read_only_fields = ["id", "sender", "created_at"]
+
+
+class CallSignalSerializer(serializers.ModelSerializer):
+    sender_name = serializers.CharField(source="sender.name", read_only=True)
+
+    class Meta:
+        model  = CallSignal
+        fields = ["id", "consultation", "sender", "sender_name", "kind", "call_type", "payload", "created_at"]
         read_only_fields = ["id", "sender", "created_at"]
 
 

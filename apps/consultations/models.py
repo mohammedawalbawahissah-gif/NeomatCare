@@ -93,3 +93,38 @@ class ConsultationMessage(models.Model):
 
     def __str__(self):
         return f"Message in {self.consultation_id} by {self.sender}"
+
+
+class CallSignal(models.Model):
+    """
+    WebRTC signaling, exchanged by polling — same pattern as ConsultationMessage
+    rather than a WebSocket channel. This app has no ASGI/Channels/Redis setup,
+    and every other "live" feature here (chat, dashboards) already polls; adding
+    a signal layer needs no new infrastructure this way, at the cost of a couple
+    seconds of extra call-setup latency versus a websocket, which is an
+    acceptable trade for how rarely a call is being *set up* versus used.
+
+    One offer per call attempt: `call_type` is only meaningful on an OFFER row.
+    Both sides poll for signals from everyone except themselves and apply them
+    in order (offer -> answer -> however many ICE candidates trickle in).
+    """
+    class Kind(models.TextChoices):
+        OFFER  = "offer",  "Offer"
+        ANSWER = "answer", "Answer"
+        ICE    = "ice",    "ICE Candidate"
+        HANGUP = "hangup", "Hangup"
+
+    id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    consultation = models.ForeignKey(Consultation, on_delete=models.CASCADE, related_name="call_signals")
+    sender       = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    kind         = models.CharField(max_length=10, choices=Kind.choices)
+    call_type    = models.CharField(max_length=10, blank=True)  # 'video' | 'audio' — set on OFFER rows only
+    payload      = models.JSONField()  # RTCSessionDescriptionInit or RTCIceCandidateInit
+    created_at   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "consultations_call_signal"
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.kind} in {self.consultation_id} by {self.sender}"

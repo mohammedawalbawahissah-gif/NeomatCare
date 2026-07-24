@@ -208,6 +208,11 @@ export const consultationsApi = {
     list: (id)       => api.get(`/api/consultations/${id}/messages/`),
     send: (id, body) => api.post(`/api/consultations/${id}/messages/`, { body }),
   },
+  callSignals: {
+    list: (id, since)      => api.get(`/api/consultations/${id}/call-signals/`, { params: since ? { since } : {} }),
+    send: (id, data)       => api.post(`/api/consultations/${id}/call-signals/`, data),
+    end:  (id)              => api.post(`/api/consultations/${id}/call-end/`),
+  },
 }
 
 // ── Facilities ────────────────────────────────────────────────────────────────

@@ -7,6 +7,7 @@ import { formatDistanceToNow, format } from 'date-fns'
 import { useAuth } from '@/contexts/AuthContext'
 import VoiceEntryBar, { VoiceEntryTrigger } from '@/components/voice/VoiceEntryBar'
 import useVoiceEntry from '@/hooks/useVoiceEntry'
+import { useWebRTCCall } from '@/hooks/useWebRTCCall'
 
 const inputStyle = { width:'100%', padding:'10px 14px', border:'1px solid #e2e8f0', borderRadius:'8px', fontSize:'0.875rem', outline:'none', boxSizing:'border-box', background:'white' }
 const labelStyle = { display:'block', fontSize:'0.875rem', fontWeight:500, color:'#374151', marginBottom:'6px' }
@@ -186,78 +187,102 @@ function ConsultStatusModal({ open, onClose, consultation, onUpdated }) {
 }
 
 // ── Call Panel ────────────────────────────────────────────────────────────────
-function CallPanel({ consultation }) {
-  const [callType, setCallType]   = useState(null) // null | 'video' | 'audio'
-  const [inCall, setInCall]       = useState(false)
-  const [muted, setMuted]         = useState(false)
-  const [videoOff, setVideoOff]   = useState(false)
-  const [callDuration, setDuration] = useState(0)
-  const timerRef = useRef(null)
+function CallPanel({ consultation, currentUserId }) {
+  const call = useWebRTCCall(consultation?.id, currentUserId)
+  const localVideoRef  = useRef(null)
+  const remoteVideoRef = useRef(null)
+  const remoteAudioRef = useRef(null)
+
+  useEffect(() => {
+    if (localVideoRef.current) localVideoRef.current.srcObject = call.localStream || null
+  }, [call.localStream])
+  useEffect(() => {
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = call.remoteStream || null
+    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = call.remoteStream || null
+  }, [call.remoteStream])
 
   const specialist = consultation?.specialist_detail
   const phone      = specialist?.specialist_phone || specialist?.whatsapp_number
   const canCall    = !['completed','cancelled'].includes(consultation?.status)
 
-  const startCall = (type) => {
-    setCallType(type)
-    setInCall(true)
-    setDuration(0)
-    timerRef.current = setInterval(() => setDuration(d => d + 1), 1000)
-  }
-
-  const endCall = () => {
-    setInCall(false)
-    setCallType(null)
-    setMuted(false)
-    setVideoOff(false)
-    clearInterval(timerRef.current)
-    setDuration(0)
-  }
-
-  useEffect(() => () => clearInterval(timerRef.current), [])
-
   const fmt = (s) => String(Math.floor(s/60)).padStart(2,"0") + ":" + String(s%60).padStart(2,"0")
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    if (call.status !== 'active') { setElapsed(0); return }
+    const t = setInterval(() => setElapsed((e) => e + 1), 1000)
+    return () => clearInterval(t)
+  }, [call.status])
 
-  if (inCall) return (
+  // ── Incoming call — someone else's offer just arrived ──────────────────────
+  if (call.status === 'ringing' && call.incomingOffer) return (
     <div className="card" style={{overflow:'hidden'}}>
-      <div style={{background:'linear-gradient(135deg,#0f172a,#1e293b)',padding:'32px 24px',textAlign:'center',position:'relative'}}>
-        <div style={{width:72,height:72,borderRadius:'50%',background:'linear-gradient(135deg,#207652,#2f9466)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1.8rem',margin:'0 auto 12px',boxShadow:'0 0 0 4px rgba(47,148,102,0.3)'}}>
-          {callType === 'video' ? '📹' : '📞'}
+      <div style={{background:'linear-gradient(135deg,#0f172a,#1e293b)',padding:'32px 24px',textAlign:'center'}}>
+        <div style={{width:72,height:72,borderRadius:'50%',background:'linear-gradient(135deg,#207652,#2f9466)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 12px',boxShadow:'0 0 0 4px rgba(47,148,102,0.3)',animation:'pulse 1.5s infinite'}}>
+          {call.incomingOffer.call_type === 'video' ? <Video size={28} color="white"/> : <Phone size={28} color="white"/>}
         </div>
+        <p style={{color:'white',fontWeight:600,fontSize:'1rem',margin:'0 0 4px'}}>Incoming {call.incomingOffer.call_type} call</p>
+        <p style={{color:'#94a3b8',fontSize:'0.8rem',margin:0}}>{call.incomingOffer.sender_name || 'Someone'} is calling</p>
+      </div>
+      <div style={{padding:'16px 24px',display:'flex',justifyContent:'center',gap:'20px',background:'white'}}>
+        <button onClick={call.declineCall} title="Decline"
+          style={{width:56,height:56,borderRadius:'50%',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',background:'#c02812',color:'white',boxShadow:'0 4px 12px rgba(192,40,18,0.4)'}}>
+          <PhoneOff size={20}/>
+        </button>
+        <button onClick={call.acceptCall} title="Accept"
+          style={{width:56,height:56,borderRadius:'50%',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',background:'#207652',color:'white',boxShadow:'0 4px 12px rgba(32,118,82,0.4)'}}>
+          <Phone size={20}/>
+        </button>
+      </div>
+    </div>
+  )
+
+  // ── Active / connecting call ────────────────────────────────────────────────
+  if (['calling','connecting','active'].includes(call.status)) return (
+    <div className="card" style={{overflow:'hidden'}}>
+      <div style={{background:'linear-gradient(135deg,#0f172a,#1e293b)',padding:'20px 24px',textAlign:'center',position:'relative'}}>
         <p style={{color:'white',fontWeight:600,fontSize:'1rem',margin:'0 0 4px'}}>
           {specialist?.user_name || 'Specialist'}
         </p>
         <p style={{color:'#94a3b8',fontSize:'0.8rem',margin:'0 0 8px'}}>
-          {callType === 'video' ? 'Video call' : 'Audio call'} · {fmt(callDuration)}
+          {call.status === 'calling' ? 'Calling…' : call.status === 'connecting' ? 'Connecting…' : `${call.callType === 'video' ? 'Video call' : 'Audio call'} · ${fmt(elapsed)}`}
         </p>
-        {callType === 'video' && (
-          <div style={{width:'100%',height:180,background:'#1e293b',borderRadius:'12px',display:'flex',alignItems:'center',justifyContent:'center',marginTop:'16px',border:'1px solid #334155'}}>
-            {videoOff
-              ? <div style={{textAlign:'center'}}><VideoOff size={28} color="#64748b"/><p style={{color:'#64748b',fontSize:'0.75rem',marginTop:'8px'}}>Camera off</p></div>
-              : <p style={{color:'#475569',fontSize:'0.8rem'}}>Camera preview</p>
-            }
+        {call.callType === 'video' ? (
+          <div style={{position:'relative',width:'100%',height:220,background:'#1e293b',borderRadius:'12px',overflow:'hidden',border:'1px solid #334155'}}>
+            <video ref={remoteVideoRef} autoPlay playsInline
+              style={{width:'100%',height:'100%',objectFit:'cover',display:call.remoteStream?'block':'none'}}/>
+            {!call.remoteStream && (
+              <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                <p style={{color:'#64748b',fontSize:'0.8rem'}}>Waiting for the other side to join…</p>
+              </div>
+            )}
+            <video ref={localVideoRef} autoPlay playsInline muted
+              style={{position:'absolute',bottom:10,right:10,width:88,height:66,borderRadius:'8px',objectFit:'cover',border:'2px solid rgba(255,255,255,0.3)',display:call.videoOff?'none':'block'}}/>
           </div>
+        ) : (
+          <audio ref={remoteAudioRef} autoPlay/>
         )}
+        {call.errorMsg && <p style={{color:'#fca5a5',fontSize:'0.75rem',marginTop:'10px'}}>{call.errorMsg}</p>}
       </div>
       <div style={{padding:'16px 24px',display:'flex',justifyContent:'center',gap:'16px',background:'white'}}>
-        <button onClick={() => setMuted(m => !m)} title={muted?'Unmute':'Mute'}
-          style={{width:48,height:48,borderRadius:'50%',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',background:muted?'#fee2e2':'#f1f5f9',color:muted?'#c02812':'#475569',transition:'all 0.15s'}}>
-          {muted ? <MicOff size={18}/> : <Mic size={18}/>}
+        <button onClick={call.toggleMute} title={call.muted?'Unmute':'Mute'}
+          style={{width:48,height:48,borderRadius:'50%',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',background:call.muted?'#fee2e2':'#f1f5f9',color:call.muted?'#c02812':'#475569'}}>
+          {call.muted ? <MicOff size={18}/> : <Mic size={18}/>}
         </button>
-        {callType === 'video' && (
-          <button onClick={() => setVideoOff(v => !v)} title={videoOff?'Turn camera on':'Turn camera off'}
-            style={{width:48,height:48,borderRadius:'50%',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',background:videoOff?'#fee2e2':'#f1f5f9',color:videoOff?'#c02812':'#475569',transition:'all 0.15s'}}>
-            {videoOff ? <VideoOff size={18}/> : <Video size={18}/>}
+        {call.callType === 'video' && (
+          <button onClick={call.toggleVideo} title={call.videoOff?'Turn camera on':'Turn camera off'}
+            style={{width:48,height:48,borderRadius:'50%',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',background:call.videoOff?'#fee2e2':'#f1f5f9',color:call.videoOff?'#c02812':'#475569'}}>
+            {call.videoOff ? <VideoOff size={18}/> : <Video size={18}/>}
           </button>
         )}
-        <button onClick={endCall} title="End call"
-          style={{width:56,height:56,borderRadius:'50%',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',background:'#c02812',color:'white',boxShadow:'0 4px 12px rgba(192,40,18,0.4)',transition:'all 0.15s'}}>
+        <button onClick={call.endCall} title="End call"
+          style={{width:56,height:56,borderRadius:'50%',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',background:'#c02812',color:'white',boxShadow:'0 4px 12px rgba(192,40,18,0.4)'}}>
           <PhoneOff size={20}/>
         </button>
       </div>
     </div>
   )
 
+  // ── Idle / not in a call ─────────────────────────────────────────────────
   return (
     <div className="card px-5 py-4">
       <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'14px'}}>
@@ -267,13 +292,17 @@ function CallPanel({ consultation }) {
         <p style={{margin:0,fontWeight:600,fontSize:'0.9rem',color:'#0f172a'}}>Call Specialist</p>
       </div>
 
+      {call.status === 'error' && call.errorMsg && (
+        <p style={{fontSize:'0.75rem',color:'#c02812',background:'#fff4f2',border:'1px solid #ffd0c8',borderRadius:'8px',padding:'8px 10px',marginBottom:'10px'}}>{call.errorMsg}</p>
+      )}
+
       {!canCall ? (
         <p style={{fontSize:'0.8rem',color:'#94a3b8',textAlign:'center',padding:'8px 0'}}>
           Calls are unavailable for {consultation?.status} consultations
         </p>
       ) : (
         <div style={{display:'flex',gap:'10px'}}>
-          <button onClick={() => startCall('video')} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:'6px',padding:'14px 10px',background:'#f0fdf4',border:'1.5px solid #bbf7d0',borderRadius:'12px',cursor:'pointer',transition:'all 0.15s'}}
+          <button onClick={() => call.startCall('video')} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:'6px',padding:'14px 10px',background:'#f0fdf4',border:'1.5px solid #bbf7d0',borderRadius:'12px',cursor:'pointer',transition:'all 0.15s'}}
             onMouseOver={e=>{e.currentTarget.style.background='#dcfce7';e.currentTarget.style.borderColor='#86efac'}}
             onMouseOut={e=>{e.currentTarget.style.background='#f0fdf4';e.currentTarget.style.borderColor='#bbf7d0'}}>
             <div style={{width:40,height:40,background:'white',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 3px rgba(0,0,0,0.08)'}}>
@@ -282,14 +311,14 @@ function CallPanel({ consultation }) {
             <span style={{fontSize:'0.8rem',fontWeight:600,color:'#207652'}}>Video Call</span>
           </button>
 
-          <button onClick={() => phone ? window.open('tel:' + phone) : startCall('audio')}
+          <button onClick={() => phone ? window.open('tel:' + phone) : call.startCall('audio')}
             style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:'6px',padding:'14px 10px',background:'#eff6ff',border:'1.5px solid #bfdbfe',borderRadius:'12px',cursor:'pointer',transition:'all 0.15s'}}
             onMouseOver={e=>{e.currentTarget.style.background='#dbeafe';e.currentTarget.style.borderColor='#93c5fd'}}
             onMouseOut={e=>{e.currentTarget.style.background='#eff6ff';e.currentTarget.style.borderColor='#bfdbfe'}}>
             <div style={{width:40,height:40,background:'white',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 1px 3px rgba(0,0,0,0.08)'}}>
               <Phone size={20} color="#1d4ed8"/>
             </div>
-            <span style={{fontSize:'0.8rem',fontWeight:600,color:'#1d4ed8'}}>Audio Call</span>
+            <span style={{fontSize:'0.8rem',fontWeight:600,color:'#1d4ed8'}}>{phone ? 'Call (Phone)' : 'Audio Call'}</span>
           </button>
         </div>
       )}
@@ -639,7 +668,7 @@ export function ConsultationDetailPage() {
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-5">
-          <CallPanel consultation={c}/>
+          <CallPanel consultation={c} currentUserId={user?.id}/>
           <ChatPanel consultationId={c.id} initialMessages={messages} user={user}/>
           {c.notes && (
             <div className="card px-5 py-4">

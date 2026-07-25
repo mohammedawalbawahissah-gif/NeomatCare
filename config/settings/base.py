@@ -250,6 +250,11 @@ EMAIL_USE_TLS    = env.bool("EMAIL_USE_TLS", default=True)
 EMAIL_HOST_USER  = env("EMAIL_HOST_USER",  default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 DEFAULT_FROM_EMAIL  = env("DEFAULT_FROM_EMAIL",  default="NeoMatCare <noreply@neomatcare.gh>")
+# Unset, Django's SMTP backend has no ceiling on a hung connection. Now that
+# delivery runs on a background thread (see apps/notifications/services.py)
+# a hang there no longer blocks a request, but it would otherwise sit on a
+# pool thread indefinitely — bound it explicitly.
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
 
 # ── SMS (Africa's Talking — set via environment variables) ──────────────────
 AT_USERNAME = env("AT_USERNAME", default="sandbox")

@@ -285,6 +285,12 @@ class EmergencyCase(models.Model):
     referring_facility = models.ForeignKey("facilities.HealthFacility", on_delete=models.PROTECT, related_name="originated_cases")
     created_at = models.DateTimeField(default=timezone.now)
 
+    # Client-generated key (e.g. a UUID minted once per form submission) so a
+    # retried request — from the offline queue, or a double-tap on a slow
+    # connection — resolves to the same case instead of creating a duplicate
+    # patient + case. Null for any case created before this existed.
+    idempotency_key = models.CharField(max_length=64, null=True, blank=True, unique=True)
+
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "emergency case"

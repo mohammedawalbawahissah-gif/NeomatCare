@@ -127,6 +127,13 @@ class Referral(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Client-generated key so a retried create — from the offline queue, or a
+    # double-tap on a slow connection — resolves to the same referral instead
+    # of hitting the emergency_case OneToOne constraint as an opaque 500, or
+    # (if the retry uses a different case reference) creating a stray one.
+    # Null for any referral created before this existed.
+    idempotency_key = models.CharField(max_length=64, null=True, blank=True, unique=True)
+
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "referral"

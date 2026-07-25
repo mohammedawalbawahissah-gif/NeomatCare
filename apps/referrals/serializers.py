@@ -74,9 +74,27 @@ class ReferralCreateSerializer(serializers.Serializer):
     engine_version         = serializers.CharField(required=False, allow_blank=True)
     override_reason        = serializers.CharField(required=False, allow_blank=True)
 
+    # Client-generated (e.g. crypto.randomUUID()), one per form submission —
+    # stays the same across a retried offline-queue attempt. If a referral
+    # with this key + creator already exists, skip validation entirely and
+    # create() returns it — this also sidesteps the "already exists for this
+    # case" error a naive retry would otherwise hit. Optional and backward
+    # compatible: omit it and behavior is unchanged.
+    idempotency_key        = serializers.CharField(max_length=64, required=False, allow_blank=True, allow_null=True)
+
     def validate(self, attrs):
         from apps.cases.models import EmergencyCase
         from apps.facilities.models import HealthFacility
+
+        request = self.context.get("request")
+        idempotency_key = attrs.get("idempotency_key")
+        if idempotency_key and request:
+            existing = Referral.objects.filter(
+                created_by=request.user, idempotency_key=idempotency_key
+            ).first()
+            if existing:
+                attrs["existing_referral"] = existing
+                return attrs
 
         # Check the case exists and doesn't already have a referral
         try:
@@ -122,6 +140,11 @@ class ReferralCreateSerializer(serializers.Serializer):
     def create(self, validated_data):
         from apps.facilities.models import HealthFacility
 
+        existing = validated_data.get("existing_referral")
+        if existing:
+            self.deduped = True
+            return existing
+
         request = self.context["request"]
         case    = validated_data["emergency_case"]
 
@@ -140,6 +163,7 @@ class ReferralCreateSerializer(serializers.Serializer):
             override_reason       = validated_data.get("override_reason", ""),
             status                = "DRAFT",
             created_by            = request.user,
+            idempotency_key       = validated_data.get("idempotency_key") or None,
         )
 
         # Write the initial status log entry

@@ -181,6 +181,13 @@ class EmergencyCaseCreateSerializer(serializers.Serializer):
     obstetric_history     = serializers.CharField(required=False, allow_blank=True)
     referring_facility    = serializers.UUIDField(required=False, allow_null=True)
 
+    # Client-generated (e.g. crypto.randomUUID()), one per form submission —
+    # stays the same across a retried offline-queue attempt. If a case with
+    # this key + creator already exists, create() returns it instead of
+    # making a duplicate. Optional and backward compatible: omit it and
+    # behavior is unchanged.
+    idempotency_key       = serializers.CharField(max_length=64, required=False, allow_blank=True, allow_null=True)
+
     def validate_vital_signs(self, value):
         allowed_keys = set(VITAL_SIGNS_SCHEMA.keys())
         unknown_keys = set(value.keys()) - allowed_keys
@@ -205,6 +212,15 @@ class EmergencyCaseCreateSerializer(serializers.Serializer):
     def create(self, validated_data):
         from apps.facilities.models import HealthFacility
         request = self.context["request"]
+
+        idempotency_key = validated_data.get("idempotency_key") or None
+        if idempotency_key:
+            existing = EmergencyCase.objects.filter(
+                created_by=request.user, idempotency_key=idempotency_key
+            ).first()
+            if existing:
+                self.deduped = True
+                return existing
 
         # Resolve or create patient
         patient_id = validated_data.get("patient_id")
@@ -243,6 +259,7 @@ class EmergencyCaseCreateSerializer(serializers.Serializer):
             obstetric_history     = validated_data.get("obstetric_history", ""),
             created_by            = request.user,
             referring_facility    = referring_facility,
+            idempotency_key       = idempotency_key,
         )
         return case
 

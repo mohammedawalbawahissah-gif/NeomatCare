@@ -153,7 +153,11 @@ class ReferralCreateView(APIView):
         serializer = ReferralCreateSerializer(data=request.data, context={"request": request})
         if serializer.is_valid():
             referral = serializer.save()
-            return Response(ReferralDetailSerializer(referral).data, status=status.HTTP_201_CREATED)
+            was_deduped = getattr(serializer, "deduped", False)
+            return Response(
+                ReferralDetailSerializer(referral).data,
+                status=status.HTTP_200_OK if was_deduped else status.HTTP_201_CREATED,
+            )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 

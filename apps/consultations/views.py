@@ -1,10 +1,12 @@
 from rest_framework import viewsets, permissions, filters
+from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 from django_filters.rest_framework import DjangoFilterBackend
 from .models import SpecialistProfile, Consultation, ConsultationMessage, CallSignal
 from .serializers import SpecialistProfileSerializer, ConsultationSerializer, ConsultationMessageSerializer, CallSignalSerializer
+from .ice import get_ice_servers
 
 
 class SpecialistProfileViewSet(viewsets.ModelViewSet):
@@ -137,3 +139,16 @@ class ConsultationViewSet(viewsets.ModelViewSet):
         consultation = self.get_object()
         CallSignal.objects.create(consultation=consultation, sender=request.user, kind="hangup", payload={})
         return Response(status=204)
+
+
+class IceServersView(APIView):
+    """
+    GET /api/consultations/ice-servers/ — fresh TURN credentials (Xirsys
+    and/or Twilio, whichever is configured) plus free STUN, for the client
+    to hand to RTCPeerConnection. Not tied to a specific consultation —
+    credentials are short-lived and provider-scoped, not call-scoped.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        return Response({"iceServers": get_ice_servers()})

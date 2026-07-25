@@ -264,3 +264,15 @@ KHAYA_API_KEY = env("KHAYA_API_KEY", default="")
 # Optional. Only used for languages Khaya doesn't cover (currently: Hausa).
 # Leave unset to disable Hausa dictation without affecting anything else.
 GOOGLE_CLOUD_STT_API_KEY = env("GOOGLE_CLOUD_STT_API_KEY", default="")
+
+# ── TURN relay (Xirsys + Twilio Network Traversal Service) ───────────────────
+# Both are optional and independent — configure one, both, or neither. Both
+# configured means both providers' TURN servers are offered to the ICE agent
+# as candidates for redundancy (failover if one provider is unreachable from
+# a given network), not combined/duplicated relay for the same call.
+# Sign up at https://xirsys.com/ and https://www.twilio.com/ for credentials.
+XIRSYS_IDENT   = env("XIRSYS_IDENT", default="")
+XIRSYS_SECRET  = env("XIRSYS_SECRET", default="")
+XIRSYS_CHANNEL = env("XIRSYS_CHANNEL", default="")
+TWILIO_ACCOUNT_SID = env("TWILIO_ACCOUNT_SID", default="")
+TWILIO_AUTH_TOKEN  = env("TWILIO_AUTH_TOKEN", default="")

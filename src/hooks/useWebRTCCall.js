@@ -22,13 +22,30 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { consultationsApi } from '../api/client'
 
-const ICE_SERVERS = {
+const FALLBACK_ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
   ],
 }
 const POLL_INTERVAL_MS = 2000
+
+/**
+ * Fetches fresh TURN credentials from the backend (which combines whichever
+ * of Xirsys/Twilio are configured with free STUN — see apps/consultations
+ * ice.py). Falls back to STUN-only if the fetch fails, so a backend hiccup
+ * degrades call quality on restrictive networks rather than blocking the
+ * call outright.
+ */
+async function fetchIceServers() {
+  try {
+    const { data } = await consultationsApi.iceServers()
+    if (Array.isArray(data?.iceServers) && data.iceServers.length) {
+      return { iceServers: data.iceServers }
+    }
+  } catch { /* fall through to STUN-only */ }
+  return FALLBACK_ICE_SERVERS
+}
 
 export function useWebRTCCall(consultationId, currentUserId) {
   const [status, setStatus] = useState('idle') // idle | calling | ringing | connecting | active | ended | error
@@ -64,8 +81,9 @@ export function useWebRTCCall(consultationId, currentUserId) {
     pendingIceRef.current = []
   }, [])
 
-  const createPeerConnection = useCallback(() => {
-    const pc = new RTCPeerConnection(ICE_SERVERS)
+  const createPeerConnection = useCallback(async () => {
+    const iceServers = await fetchIceServers()
+    const pc = new RTCPeerConnection(iceServers)
     pc.onicecandidate = (e) => {
       if (e.candidate) {
         consultationsApi.callSignals.send(consultationId, { kind: 'ice', payload: e.candidate.toJSON() }).catch(() => {})
@@ -148,7 +166,7 @@ export function useWebRTCCall(consultationId, currentUserId) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: true })
       setLocalStream(stream)
-      const pc = createPeerConnection()
+      const pc = await createPeerConnection()
       stream.getTracks().forEach((t) => pc.addTrack(t, stream))
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
@@ -169,7 +187,7 @@ export function useWebRTCCall(consultationId, currentUserId) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: incomingOffer.call_type === 'video', audio: true })
       setLocalStream(stream)
-      const pc = createPeerConnection()
+      const pc = await createPeerConnection()
       stream.getTracks().forEach((t) => pc.addTrack(t, stream))
       await pc.setRemoteDescription(incomingOffer.payload)
       for (const c of pendingIceRef.current) await pc.addIceCandidate(c).catch(() => {})

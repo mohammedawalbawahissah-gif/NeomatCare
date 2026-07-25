@@ -213,6 +213,7 @@ export const consultationsApi = {
     send: (id, data)       => api.post(`/api/consultations/${id}/call-signals/`, data),
     end:  (id)              => api.post(`/api/consultations/${id}/call-end/`),
   },
+  iceServers: () => api.get('/api/consultations/ice-servers/'),
 }
 
 // ── Facilities ────────────────────────────────────────────────────────────────

@@ -57,6 +57,18 @@ export function OfflineQueueProvider({ children }) {
     }
   }, [sync])
 
+  // Periodic retry — a request can land in the queue for reasons that have
+  // nothing to do with the browser actually going offline (e.g. a Render
+  // free-tier cold start taking longer than the request timeout). Since the
+  // browser's connection never dropped, no 'online' event will ever fire to
+  // trigger a re-sync, and the item would otherwise sit queued indefinitely
+  // until the person happens to switch tabs. This catches that case.
+  useEffect(() => {
+    if (pending.length === 0) return undefined
+    const interval = setInterval(() => sync(), 45000)
+    return () => clearInterval(interval)
+  }, [pending.length, sync])
+
   // Tab-foreground trigger — catches connectivity that returned while the
   // tab was backgrounded/asleep and no 'online' event fired
   useEffect(() => {

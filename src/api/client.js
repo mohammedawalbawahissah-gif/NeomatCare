@@ -19,12 +19,14 @@ if (!BASE_URL) {
 export const publicApi = axios.create({
   baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
+  timeout: 60000, // Render free tier cold starts can take 30-60s; give it room
 })
 
 // ── Authenticated client ──────────────────────────────────────────────────────
 export const api = axios.create({
   baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
+  timeout: 60000, // Render free tier cold starts can take 30-60s; give it room
 })
 
 api.interceptors.request.use((config) => {

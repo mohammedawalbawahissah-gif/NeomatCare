@@ -49,6 +49,7 @@ import ReferralDetailScreen  from '../screens/referrals/ReferralDetailScreen';
 // Specialist
 import ConsultationsScreen       from '../screens/consultations/ConsultationsScreen';
 import ConsultationDetailScreen  from '../screens/consultations/ConsultationDetailScreen';
+import SpecialistProfileScreen   from '../screens/specialist/SpecialistProfileScreen';
 
 // Facility admin
 import FacilityScreen from '../screens/facility-admin/FacilityScreen';
@@ -58,8 +59,9 @@ import TransportScreen       from '../screens/transport/TransportScreen';
 import MyDispatchesScreen    from '../screens/driver/MyDispatchesScreen';
 
 // Superadmin
-import FacilitiesScreen from '../screens/superadmin/FacilitiesScreen';
-import UsersScreen      from '../screens/superadmin/UsersScreen';
+import FacilitiesScreen  from '../screens/superadmin/FacilitiesScreen';
+import UsersScreen       from '../screens/superadmin/UsersScreen';
+import SpecialistsScreen from '../screens/superadmin/SpecialistsScreen';
 
 // Patient portal
 import PatientPortalScreen from '../screens/patient-portal/PatientPortalScreen';
@@ -196,6 +198,7 @@ const SpecialistMenu = () => {
       items={[
         { key: 'consultations', label: 'Consults',  icon: 'chatbubbles-outline',     color: '#ede9fe', iconColor: '#6d28d9', onPress: () => nav.navigate('Consultations') },
         { key: 'referrals',     label: 'Referrals', icon: 'swap-horizontal-outline', color: '#fef3c7', iconColor: '#d97706', onPress: () => nav.navigate('Referrals') },
+        { key: 'myProfile',     label: 'My Profile', icon: 'medkit-outline',         color: '#dcf1e6', iconColor: '#207652', onPress: () => nav.navigate('SpecialistProfile') },
       ]}
     />
   );
@@ -203,9 +206,10 @@ const SpecialistMenu = () => {
 
 const SpecialistMenuStack = () => (
   <Stack.Navigator screenOptions={NO_HEADER}>
-    <Stack.Screen name="Menu"          component={SpecialistMenu} />
-    <Stack.Screen name="Consultations" component={ConsultationsStack} />
-    <Stack.Screen name="Referrals"     component={ReferralsStack} />
+    <Stack.Screen name="Menu"               component={SpecialistMenu} />
+    <Stack.Screen name="Consultations"      component={ConsultationsStack} />
+    <Stack.Screen name="Referrals"          component={ReferralsStack} />
+    <Stack.Screen name="SpecialistProfile"  component={SpecialistProfileScreen} />
   </Stack.Navigator>
 );
 
@@ -298,6 +302,7 @@ const SuperadminMenu = () => {
         { key: 'consultations', label: 'Consults',     icon: 'chatbubbles-outline',        color: '#ede9fe', iconColor: '#6d28d9', onPress: () => nav.navigate('Consultations') },
         { key: 'transport',     label: 'Transport',    icon: 'car-outline',                color: '#ffe4e6', iconColor: '#be123c', onPress: () => nav.navigate('Transport') },
         { key: 'facilities',    label: 'Facilities',   icon: 'business-outline',           color: '#e0f2fe', iconColor: '#0369a1', onPress: () => nav.navigate('Facilities') },
+        { key: 'specialists',   label: 'Specialists',  icon: 'medkit-outline',             color: '#dcf1e6', iconColor: '#207652', onPress: () => nav.navigate('Specialists') },
         { key: 'users',         label: 'Users',        icon: 'people-circle-outline',      color: '#f1f5f9', iconColor: '#475569', onPress: () => nav.navigate('Users') },
       ]}
     />
@@ -313,6 +318,7 @@ const SuperadminMenuStack = () => (
     <Stack.Screen name="Consultations" component={ConsultationsStack} />
     <Stack.Screen name="Transport"     component={TransportScreen} />
     <Stack.Screen name="Facilities"    component={FacilitiesScreen} />
+    <Stack.Screen name="Specialists"   component={SpecialistsScreen} />
     <Stack.Screen name="Users"         component={UsersScreen} />
   </Stack.Navigator>
 );

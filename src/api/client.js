@@ -235,8 +235,11 @@ export const consultationsApi = {
     create:    (data)     => apiClient.post('/api/consultations/specialists/', data),
     detail:    (id)       => apiClient.get(`/api/consultations/specialists/${id}/`),
     update:    (id, data) => apiClient.patch(`/api/consultations/specialists/${id}/`, data),
+    delete:    (id)       => apiClient.delete(`/api/consultations/specialists/${id}/`),
     available: ()         => apiClient.get('/api/consultations/specialists/', { params: { is_available: true } }),
     schedules: (id)       => apiClient.get(`/api/consultations/specialists/${id}/schedules/`),
+    me:        ()         => apiClient.get('/api/consultations/specialists/me/'),
+    updateMe:  (data)     => apiClient.patch('/api/consultations/specialists/me/', data),
   },
   messages: {
     list: (id)       => apiClient.get(`/api/consultations/${id}/messages/`),

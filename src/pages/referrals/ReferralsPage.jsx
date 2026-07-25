@@ -9,6 +9,7 @@ import VoiceEntryBar, { VoiceEntryTrigger } from '@/components/voice/VoiceEntryB
 import useVoiceEntry from '@/hooks/useVoiceEntry'
 import ReadAloudTrigger from '@/components/voice/ReadAloudBar'
 import useReadAloud from '@/hooks/useReadAloud'
+import { generateIdempotencyKey } from '@/utils/idempotencyKey'
 
 // ── Referral List ─────────────────────────────────────────────────────────────
 export function ReferralsPage() {
@@ -173,6 +174,7 @@ export function CreateReferralModal({ open, onClose, emergencyCaseId, onCreated 
         ...(suggestion?.engine_version && { engine_version: suggestion.engine_version }),
         ...(engineRecId               && { engine_recommendation_id: engineRecId }),
         ...(isOverride                && { override_reason: overrideReason }),
+        idempotency_key:       generateIdempotencyKey(),
       }
       const { data } = await referralsApi.create(payload)
       setCreatedReferral(data)

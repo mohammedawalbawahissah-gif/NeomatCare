@@ -10,6 +10,7 @@ import { format } from 'date-fns'
 import { useAuth } from '@/contexts/AuthContext'
 import { useOfflineQueue } from '@/contexts/OfflineQueueContext'
 import { QueueKinds, isQueueItemFailed, MAX_RETRIES } from '@/utils/offlineQueue'
+import { generateIdempotencyKey } from '@/utils/idempotencyKey'
 import { cachedFetch } from '@/utils/cachedFetch'
 import ReadAloudTrigger from '@/components/voice/ReadAloudBar'
 import useReadAloud from '@/hooks/useReadAloud'
@@ -282,6 +283,10 @@ function ReferralModal({ open, onClose, caseData }) {
         ...(suggestion?.engine_version && { engine_version: suggestion.engine_version }),
         ...(engineRecId               && { engine_recommendation_id: engineRecId }),
         ...(isOverride                && { override_reason: overrideReason }),
+        // Stable across a retried offline-queue attempt — lets the backend
+        // recognize a resend of this exact submission instead of rejecting
+        // it as "a referral already exists for this case."
+        idempotency_key:           generateIdempotencyKey(),
       }
       const result = await submitOrQueue({
         method: 'post',

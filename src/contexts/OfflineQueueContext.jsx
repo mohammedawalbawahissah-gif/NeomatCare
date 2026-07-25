@@ -65,6 +65,18 @@ export function OfflineQueueProvider({ children }) {
     return () => sub.remove();
   }, [sync]);
 
+  // Periodic retry — a request can land in the queue for reasons that have
+  // nothing to do with the device actually losing connectivity (e.g. a
+  // Render free-tier cold start taking longer than the 60s request timeout).
+  // Since NetInfo never reported a drop, no reconnect event will fire to
+  // trigger a re-sync, and the item would otherwise sit queued until the
+  // person happens to background/foreground the app. This catches that case.
+  useEffect(() => {
+    if (pending.length === 0) return undefined;
+    const interval = setInterval(() => sync(), 45000);
+    return () => clearInterval(interval);
+  }, [pending.length, sync]);
+
   /**
    * Attempt a write live; if it fails because the device is offline, queue
    * it instead of throwing. Any other failure (validation, 403, 409, ...)

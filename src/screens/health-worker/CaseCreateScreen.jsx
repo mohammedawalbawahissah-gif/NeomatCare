@@ -7,6 +7,7 @@ import {
 } from '../../api/client';
 import { useOfflineQueue } from '../../contexts/OfflineQueueContext';
 import { QueueKinds } from '../../utils/offlineQueue';
+import { generateIdempotencyKey } from '../../utils/idempotencyKey';
 import { cachedFetch } from '../../utils/cachedFetch';
 import { Input, Select, Button, ErrorBanner, Spinner, Badge } from '../../components/ui';
 import { DangerSignPicker } from '../../components/ui/dangerSigns';
@@ -234,6 +235,11 @@ function CaseFormStep({ form, setForm, onCancel, onCreated, onQueued }) {
         obstetric_history: form.obstetric_history.trim(),
         vital_signs,
         referring_facility: form.referring_facility,
+        // Minted once per submission (not per HTTP attempt) — stays the same
+        // if this gets queued offline and retried later, so the backend can
+        // recognize a retry of this exact submission and avoid creating a
+        // duplicate case/patient.
+        idempotency_key: generateIdempotencyKey(),
       };
       const payload = isExisting
         ? { patient_id: form.patient_id, ...common }
@@ -424,6 +430,7 @@ function ReferralPanel({ caseData, onDone }) {
         engine_recommendation_id: recommended?.id || null,
         engine_version: engineVersion,
         override_reason: override,
+        idempotency_key: generateIdempotencyKey(),
       });
       onDone();
     } catch (err) {

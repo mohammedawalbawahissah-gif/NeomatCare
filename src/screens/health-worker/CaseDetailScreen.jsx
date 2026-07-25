@@ -9,6 +9,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { useOfflineQueue } from '../../contexts/OfflineQueueContext';
 import { QueueKinds, isQueueItemFailed } from '../../utils/offlineQueue';
+import { generateIdempotencyKey } from '../../utils/idempotencyKey';
 import { cachedFetch } from '../../utils/cachedFetch';
 import {
   Input, Select, Button, Modal, Spinner, Badge, ErrorBanner, Card,
@@ -536,6 +537,10 @@ function ReferralCreateModal({ visible, onClose, caseData: c, onSaved }) {
         engine_recommendation_id: suggestion?.recommended_facility?.id || null,
         engine_version: suggestion?.engine_version || '',
         override_reason: mode === 'manual' || needsOverride ? override : '',
+        // Stable across a retried offline-queue attempt — lets the backend
+        // recognize a resend of this exact submission instead of rejecting
+        // it as "a referral already exists for this case."
+        idempotency_key: generateIdempotencyKey(),
       };
       const result = await submitOrQueue({
         method: 'post',

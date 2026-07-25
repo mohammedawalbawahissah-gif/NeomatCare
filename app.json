@@ -45,6 +45,13 @@
           "microphonePermission": "NeoMatCare uses the microphone for voice dictation into case and patient forms.",
           "speechRecognitionPermission": "NeoMatCare uses speech recognition for English voice dictation."
         }
+      ],
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": "NeoMatCare uses the camera for video teleconsultations with specialists.",
+          "microphonePermission": "NeoMatCare uses the microphone for teleconsultation calls."
+        }
       ]
     ],
     "extra": {

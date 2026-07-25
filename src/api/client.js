@@ -242,6 +242,12 @@ export const consultationsApi = {
     list: (id)       => apiClient.get(`/api/consultations/${id}/messages/`),
     send: (id, body) => apiClient.post(`/api/consultations/${id}/messages/`, { body }),
   },
+  callSignals: {
+    list: (id, since) => apiClient.get(`/api/consultations/${id}/call-signals/`, { params: since ? { since } : {} }),
+    send: (id, data)  => apiClient.post(`/api/consultations/${id}/call-signals/`, data),
+    end:  (id)        => apiClient.post(`/api/consultations/${id}/call-end/`),
+  },
+  iceServers: () => apiClient.get('/api/consultations/ice-servers/'),
 };
 
 // ─── Facilities ────────────────────────────────────────────────────────────────

@@ -11,6 +11,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Input, Select, Button, Modal, Spinner, Badge, ErrorBanner, Card } from '../../components/ui';
 import VoiceEntryBar, { VoiceEntryTrigger } from '../../components/voice/VoiceEntryBar';
 import useVoiceEntry from '../../hooks/useVoiceEntry';
+import { useWebRTCCall } from '../../hooks/useWebRTCCall';
+import { RTCView } from 'react-native-webrtc';
 import Colors from '../../constants/colors';
 import { Typography, Spacing, Radius, Shadow } from '../../constants/theme';
 
@@ -66,7 +68,7 @@ export default function ConsultationDetailScreen({ route, navigation }) {
       <ScrollView contentContainerStyle={{ padding: Spacing[4], paddingBottom: Spacing[10], gap: Spacing[3] }}>
         {canAct && <Button title="Update Status" icon="refresh" onPress={() => setStatusModal(true)} fullWidth />}
 
-        <CallPanel consultation={c} specialist={specialist} />
+        <CallPanel consultation={c} specialist={specialist} currentUserId={user?.id} />
         <ChatPanel consultationId={id} user={user} />
 
         {!!c.notes && (
@@ -119,41 +121,77 @@ function Header({ navigation, status, canManage, onEdit, onDelete }) {
 
 // ─── Call panel — tel:/WhatsApp deep links, plus a lightweight mock in-call UI ──
 // (There's no real WebRTC backend; this mirrors the web app's simulated call flow.)
-function CallPanel({ consultation, specialist }) {
-  const [callType, setCallType] = useState(null); // null | 'video' | 'audio'
-  const [inCall, setInCall] = useState(false);
-  const [muted, setMuted] = useState(false);
-  const [duration, setDuration] = useState(0);
-  const timerRef = useRef(null);
-
+function CallPanel({ consultation, specialist, currentUserId }) {
+  const call = useWebRTCCall(consultation?.id, currentUserId);
   const phone = specialist?.specialist_phone || specialist?.whatsapp_number;
   const canCall = !['completed', 'cancelled'].includes(consultation?.status);
 
-  const startCall = (type) => {
-    setCallType(type); setInCall(true); setDuration(0);
-    timerRef.current = setInterval(() => setDuration((d) => d + 1), 1000);
-  };
-  const endCall = () => {
-    setInCall(false); setCallType(null); setMuted(false);
-    clearInterval(timerRef.current); setDuration(0);
-  };
-  useEffect(() => () => clearInterval(timerRef.current), []);
-
   const fmtDur = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (call.status !== 'active') { setElapsed(0); return; }
+    const t = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => clearInterval(t);
+  }, [call.status]);
 
-  if (inCall) {
+  // ── Incoming call ────────────────────────────────────────────────────────
+  if (call.status === 'ringing' && call.incomingOffer) {
     return (
       <View style={styles.callActiveCard}>
         <View style={styles.callActiveHeader}>
-          <View style={styles.callAvatar}><Ionicons name={callType === 'video' ? 'videocam' : 'call'} size={28} color={Colors.white} /></View>
+          <View style={[styles.callAvatar, { backgroundColor: Colors.primary }]}>
+            <Ionicons name={call.incomingOffer.call_type === 'video' ? 'videocam' : 'call'} size={28} color={Colors.white} />
+          </View>
+          <Text style={styles.callName}>Incoming {call.incomingOffer.call_type} call</Text>
+          <Text style={styles.callSub}>{call.incomingOffer.sender_name || 'Someone'} is calling</Text>
+        </View>
+        <View style={[styles.callControls, { justifyContent: 'center', gap: 24 }]}>
+          <TouchableOpacity style={styles.callEndBtn} onPress={call.declineCall}>
+            <Ionicons name="call" size={20} color={Colors.white} style={{ transform: [{ rotate: '135deg' }] }} />
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.callEndBtn, { backgroundColor: Colors.successDark }]} onPress={call.acceptCall}>
+            <Ionicons name="call" size={20} color={Colors.white} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // ── Active / connecting call ─────────────────────────────────────────────
+  if (['calling', 'connecting', 'active'].includes(call.status)) {
+    return (
+      <View style={styles.callActiveCard}>
+        <View style={styles.callActiveHeader}>
           <Text style={styles.callName}>{specialist?.user_name || specialist?.display_name || 'Specialist'}</Text>
-          <Text style={styles.callSub}>{callType === 'video' ? 'Video call' : 'Audio call'} · {fmtDur(duration)}</Text>
+          <Text style={styles.callSub}>
+            {call.status === 'calling' ? 'Calling…' : call.status === 'connecting' ? 'Connecting…' : `${call.callType === 'video' ? 'Video call' : 'Audio call'} · ${fmtDur(elapsed)}`}
+          </Text>
+          {call.callType === 'video' ? (
+            <View style={styles.videoContainer}>
+              {call.remoteStream ? (
+                <RTCView streamURL={call.remoteStream.toURL()} style={styles.remoteVideo} objectFit="cover" />
+              ) : (
+                <Text style={styles.waitingText}>Waiting for the other side to join…</Text>
+              )}
+              {call.localStream && !call.videoOff && (
+                <RTCView streamURL={call.localStream.toURL()} style={styles.localVideo} objectFit="cover" mirror zOrder={1} />
+              )}
+            </View>
+          ) : (
+            <View style={styles.callAvatar}><Ionicons name="call" size={28} color={Colors.white} /></View>
+          )}
+          {!!call.errorMsg && <Text style={styles.callError}>{call.errorMsg}</Text>}
         </View>
         <View style={styles.callControls}>
-          <TouchableOpacity style={[styles.callBtn, muted && styles.callBtnActive]} onPress={() => setMuted((m) => !m)}>
-            <Ionicons name={muted ? 'mic-off' : 'mic'} size={18} color={muted ? Colors.dangerDark : Colors.textSecondary} />
+          <TouchableOpacity style={[styles.callBtn, call.muted && styles.callBtnActive]} onPress={call.toggleMute}>
+            <Ionicons name={call.muted ? 'mic-off' : 'mic'} size={18} color={call.muted ? Colors.dangerDark : Colors.textSecondary} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.callEndBtn} onPress={endCall}>
+          {call.callType === 'video' && (
+            <TouchableOpacity style={[styles.callBtn, call.videoOff && styles.callBtnActive]} onPress={call.toggleVideo}>
+              <Ionicons name={call.videoOff ? 'videocam-off' : 'videocam'} size={18} color={call.videoOff ? Colors.dangerDark : Colors.textSecondary} />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={styles.callEndBtn} onPress={call.endCall}>
             <Ionicons name="call" size={20} color={Colors.white} style={{ transform: [{ rotate: '135deg' }] }} />
           </TouchableOpacity>
         </View>
@@ -161,23 +199,25 @@ function CallPanel({ consultation, specialist }) {
     );
   }
 
+  // ── Idle ──────────────────────────────────────────────────────────────────
   return (
     <Card>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: Spacing[3] }}>
         <Ionicons name="call-outline" size={16} color={Colors.primary} />
         <Text style={styles.cardTitleText}>Call Specialist</Text>
       </View>
+      {call.status === 'error' && !!call.errorMsg && <Text style={styles.callErrorIdle}>{call.errorMsg}</Text>}
       {!canCall ? (
         <Text style={styles.emptyText}>Calls are unavailable for {consultation?.status} consultations</Text>
       ) : (
         <View style={{ flexDirection: 'row', gap: Spacing[2] }}>
-          <TouchableOpacity style={styles.callOptionBtn} onPress={() => startCall('video')}>
+          <TouchableOpacity style={styles.callOptionBtn} onPress={() => call.startCall('video')}>
             <View style={styles.callOptionIcon}><Ionicons name="videocam" size={20} color={Colors.primary} /></View>
             <Text style={styles.callOptionLabel}>Video Call</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.callOptionBtn, styles.callOptionBtnBlue]} onPress={() => phone ? Linking.openURL(`tel:${phone}`) : startCall('audio')}>
+          <TouchableOpacity style={[styles.callOptionBtn, styles.callOptionBtnBlue]} onPress={() => phone ? Linking.openURL(`tel:${phone}`) : call.startCall('audio')}>
             <View style={styles.callOptionIcon}><Ionicons name="call" size={20} color={Colors.infoDark} /></View>
-            <Text style={[styles.callOptionLabel, { color: Colors.infoDark }]}>Audio Call</Text>
+            <Text style={[styles.callOptionLabel, { color: Colors.infoDark }]}>{phone ? 'Call (Phone)' : 'Audio Call'}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -381,6 +421,12 @@ const styles = StyleSheet.create({
   callAvatar: { width: 64, height: 64, borderRadius: Radius.full, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing[2] },
   callName: { color: Colors.white, fontWeight: Typography.semibold, fontSize: Typography.md },
   callSub: { color: '#94a3b8', fontSize: Typography.xs, marginTop: 2 },
+  videoContainer: { width: '100%', height: 200, backgroundColor: '#1e293b', borderRadius: Radius.md, overflow: 'hidden', marginTop: Spacing[3], position: 'relative', alignItems: 'center', justifyContent: 'center' },
+  remoteVideo: { width: '100%', height: '100%' },
+  localVideo: { position: 'absolute', bottom: 8, right: 8, width: 76, height: 58, borderRadius: 8, borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)' },
+  waitingText: { color: '#64748b', fontSize: Typography.xs },
+  callError: { color: '#fca5a5', fontSize: Typography.xs, marginTop: Spacing[2], textAlign: 'center' },
+  callErrorIdle: { color: Colors.dangerDark, fontSize: Typography.xs, backgroundColor: Colors.dangerLight, borderRadius: Radius.md, padding: Spacing[2], marginBottom: Spacing[3] },
   callControls: { flexDirection: 'row', justifyContent: 'center', gap: Spacing[4], paddingVertical: Spacing[4], backgroundColor: Colors.white },
   callBtn: { width: 44, height: 44, borderRadius: Radius.full, backgroundColor: Colors.gray100, alignItems: 'center', justifyContent: 'center' },
   callBtnActive: { backgroundColor: Colors.dangerLight },

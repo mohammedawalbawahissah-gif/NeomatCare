@@ -56,6 +56,28 @@ class SpecialistProfileViewSet(viewsets.ModelViewSet):
     def schedules(self, request, pk=None):
         return Response([])
 
+    @action(detail=False, methods=["get", "patch"], url_path="me")
+    def me(self, request):
+        """
+        Self-service endpoint for a logged-in specialist to view/update their
+        own profile, without needing to know their SpecialistProfile id.
+        GET 404s with a clear message if no profile has been linked yet by
+        an admin (a specialist user account can exist before a facility/
+        superadmin has created + linked their SpecialistProfile record).
+        """
+        profile = SpecialistProfile.objects.filter(user=request.user).first()
+        if not profile:
+            return Response(
+                {"detail": "No specialist profile is linked to your account yet. Ask an admin to link one."},
+                status=404,
+            )
+        if request.method == "GET":
+            return Response(self.get_serializer(profile).data)
+        serializer = self.get_serializer(profile, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
 
 class ConsultationViewSet(viewsets.ModelViewSet):
     queryset = Consultation.objects.select_related("specialist", "referral", "requested_by").all()

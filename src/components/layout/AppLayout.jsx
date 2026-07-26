@@ -6,7 +6,7 @@ import {
   LayoutDashboard, ClipboardList, ArrowRightLeft, Truck,
   Video, Building2, Users, LogOut, Menu, X, Heart,
   ChevronRight, Bell, Baby, Star, PhoneCall, HeartPulse, UserCircle,
-  Settings, CheckCheck,
+  Settings, CheckCheck, Stethoscope,
 } from 'lucide-react'
 import clsx from 'clsx'
 import AssistantWidget from '@/components/ai/AssistantWidget'
@@ -32,6 +32,7 @@ const NAV_BY_ROLE = {
   specialist: [
     { to: '/app/dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
     { to: '/app/consultations',  label: 'My Queue',       icon: Video },
+    { to: '/app/specialist-profile', label: 'My Profile', icon: Stethoscope },
   ],
   driver: [
     { to: '/app/dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
@@ -43,6 +44,7 @@ const NAV_BY_ROLE = {
     { to: '/app/patients',       label: 'Patients',       icon: UserCircle },
     { to: '/app/referrals',      label: 'All Referrals',  icon: ArrowRightLeft },
     { to: '/app/facilities',     label: 'Facilities',     icon: Building2 },
+    { to: '/app/specialists',    label: 'Specialists',    icon: Stethoscope },
     { to: '/app/consultations',  label: 'Consultations',  icon: Video },
     { to: '/app/transport',      label: 'Transport',      icon: Truck },
     { to: '/app/users',          label: 'Users',          icon: Users },

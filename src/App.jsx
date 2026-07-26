@@ -5,7 +5,7 @@ import AppLayout from '@/components/layout/AppLayout'
 
 import LoginPage           from '@/pages/auth/LoginPage'
 import RegisterPage        from '@/pages/auth/RegisterPage'
-import PatientRegisterPage from '@/pages/auth/PatientRegisterPage'
+import WellnessCompanionPage from '@/pages/auth/WellnessCompanionPage'
 import DashboardPage       from '@/pages/DashboardPage'
 
 import CasesPage      from '@/pages/health-worker/CasesPage'
@@ -14,6 +14,7 @@ import CaseDetailPage from '@/pages/health-worker/CaseDetailPage'
 import { ReferralsPage, ReferralDetailPage } from '@/pages/referrals/ReferralsPage'
 
 import { ConsultationsPage, ConsultationDetailPage } from '@/pages/specialist/ConsultationsPage'
+import SpecialistProfilePage from '@/pages/specialist/SpecialistProfilePage'
 
 import { TransportPage, MyDispatchesPage } from '@/pages/driver/TransportPage'
 
@@ -21,6 +22,7 @@ import FacilityPage from '@/pages/facility-admin/FacilityPage'
 
 import FacilitiesPage from '@/pages/superadmin/FacilitiesPage'
 import UsersPage      from '@/pages/superadmin/UsersPage'
+import SpecialistsPage from '@/pages/superadmin/SpecialistsPage'
 
 import ProfilePage from '@/pages/ProfilePage'
 
@@ -66,7 +68,7 @@ export default function App() {
           <Route element={<RedirectIfAuth />}>
             <Route path="/login"            element={<LoginPage />} />
             <Route path="/register"         element={<RegisterPage />} />
-            <Route path="/patient-register" element={<PatientRegisterPage />} />
+            <Route path="/patient-register" element={<WellnessCompanionPage />} />
           </Route>
 
           {/* ROOT */}
@@ -111,6 +113,11 @@ export default function App() {
               <Route path="consultations/:id" element={<ConsultationDetailPage />} />
             </Route>
 
+            {/* SPECIALIST self-service profile — specialist only */}
+            <Route element={<RequireRole allowed={['specialist']} />}>
+              <Route path="specialist-profile" element={<SpecialistProfilePage />} />
+            </Route>
+
             {/* TRANSPORT — health_worker, facility_admin, driver, superadmin */}
             <Route element={<RequireRole allowed={['health_worker','facility_admin','driver','superadmin']} />}>
               <Route path="transport"      element={<TransportPage />} />
@@ -130,6 +137,7 @@ export default function App() {
             {/* SUPERADMIN only */}
             <Route element={<RequireRole allowed={['superadmin']} />}>
               <Route path="facilities" element={<FacilitiesPage />} />
+              <Route path="specialists" element={<SpecialistsPage />} />
             </Route>
           </Route>
 

@@ -1,21 +1,21 @@
 # Core framework
-Django==5.0.4
-djangorestframework==3.15.1
+Django==5.2.16
+djangorestframework==3.16.1
 
 # PostgreSQL adapter
 psycopg2-binary==2.9.12
 
 # JWT authentication
-djangorestframework-simplejwt==5.3.1
+djangorestframework-simplejwt==5.4.0
 
 # Environment variable management
 django-environ==0.11.2
 
 # CORS headers (needed when a frontend connects)
-django-cors-headers==4.3.1
+django-cors-headers==4.4.0
 
 # API documentation
-drf-spectacular==0.27.2
+drf-spectacular==0.28.0
 
 # Rate limiting
 django-ratelimit==4.1.0

@@ -7,7 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import IsHealthWorkerOrFacilityAdmin
+from apps.accounts.permissions import IsHealthWorkerOrFacilityAdmin, IsHealthWorkerOrFacilityAdminOrPatient
 from .models import Patient, ANCVisit, PatientConsent, EmergencyCase, TriageNote
 from .serializers import (
     PatientListSerializer, PatientDetailSerializer,
@@ -22,7 +22,7 @@ from .serializers import (
 # ── Patient Views ─────────────────────────────────────────────────────────────
 
 class PatientListCreateView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsHealthWorkerOrFacilityAdminOrPatient]
 
     def get(self, request):
         qs = Patient.objects.filter(deleted_at__isnull=True).select_related(
@@ -64,7 +64,7 @@ class PatientListCreateView(APIView):
 
 
 class PatientDetailView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsHealthWorkerOrFacilityAdminOrPatient]
 
     def _get_patient(self, pk, user):
         try:
@@ -201,7 +201,7 @@ class ANCVisitDetailView(APIView):
 # ── Consent Views ─────────────────────────────────────────────────────────────
 
 class PatientConsentView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsHealthWorkerOrFacilityAdmin]
 
     def get(self, request, pk):
         try:

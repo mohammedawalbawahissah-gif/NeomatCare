@@ -4,6 +4,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 from django_filters.rest_framework import DjangoFilterBackend
+from django_ratelimit.decorators import ratelimit
+from django.utils.decorators import method_decorator
 from .models import SpecialistProfile, Consultation, ConsultationMessage, CallSignal
 from .serializers import SpecialistProfileSerializer, ConsultationSerializer, ConsultationMessageSerializer, CallSignalSerializer
 from .ice import get_ice_servers
@@ -163,6 +165,7 @@ class ConsultationViewSet(viewsets.ModelViewSet):
         return Response(status=204)
 
 
+@method_decorator(ratelimit(key='user', rate='20/min', method='GET', block=True), name='get')
 class IceServersView(APIView):
     """
     GET /api/consultations/ice-servers/ — fresh TURN credentials (Xirsys

@@ -17,6 +17,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from django_ratelimit.decorators import ratelimit
+from django.utils.decorators import method_decorator
 
 from apps.ai.service import (
     AIServiceError,
@@ -43,6 +45,7 @@ def _ai_error_response(exc: AIServiceError):
 
 # ── 1. Triage Extraction ──────────────────────────────────────────────────────
 
+@method_decorator(ratelimit(key='user', rate='20/min', method='POST', block=True), name='post')
 class TriageExtractView(APIView):
     """
     POST /api/ai/triage-extract/
@@ -69,6 +72,7 @@ class TriageExtractView(APIView):
 
 # ── 2. Risk Narration ─────────────────────────────────────────────────────────
 
+@method_decorator(ratelimit(key='user', rate='20/min', method='POST', block=True), name='post')
 class RiskNarrateView(APIView):
     """
     POST /api/ai/risk-narrate/
@@ -111,6 +115,7 @@ class RiskNarrateView(APIView):
 
 # ── 3. ANC Anomaly Detection ──────────────────────────────────────────────────
 
+@method_decorator(ratelimit(key='user', rate='20/min', method='POST', block=True), name='post')
 class ANCAnomalyView(APIView):
     """
     POST /api/ai/anc-anomaly/
@@ -155,6 +160,7 @@ class ANCAnomalyView(APIView):
 
 # ── 4. Referral Handover Brief ────────────────────────────────────────────────
 
+@method_decorator(ratelimit(key='user', rate='20/min', method='POST', block=True), name='post')
 class ReferralHandoverView(APIView):
     """
     POST /api/ai/referral-handover/
@@ -228,6 +234,7 @@ class ReferralHandoverView(APIView):
 
 # ── 5. Transport Recommendation ───────────────────────────────────────────────
 
+@method_decorator(ratelimit(key='user', rate='20/min', method='POST', block=True), name='post')
 class TransportRecommendView(APIView):
     """
     POST /api/ai/transport-recommend/
@@ -275,6 +282,7 @@ class TransportRecommendView(APIView):
 
 # ── 6. Chat Assistant ─────────────────────────────────────────────────────────
 
+@method_decorator(ratelimit(key='user', rate='30/min', method='POST', block=True), name='post')
 class ChatView(APIView):
     """
     POST /api/ai/chat/

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { casesApi, facilitiesApi, referralsApi, transportApi, consultationsApi, patientsApi } from '@/api/client'
 import { useOfflineQueue } from '@/contexts/OfflineQueueContext'
 import { QueueKinds, isQueueItemFailed } from '@/utils/offlineQueue'
+import { generateIdempotencyKey } from '@/utils/idempotencyKey'
 import { cachedFetch } from '@/utils/cachedFetch'
 import VoiceEntryBar, { VoiceEntryTrigger } from '@/components/voice/VoiceEntryBar'
 import useVoiceEntry from '@/hooks/useVoiceEntry'
@@ -93,6 +94,7 @@ function ReferralPanel({ caseData, onDone, navigate }) {
         engine_recommendation_id: recommended?.id || null,
         engine_version:           engineVersion,
         override_reason:          override,
+        idempotency_key:          generateIdempotencyKey(),
       }
       const { data } = await referralsApi.create(payload)
       navigate(`/app/referrals/${data.id}`)
@@ -530,6 +532,11 @@ function CreateCaseModal({ open, onClose, onCreated }) {
       // Payload keys match EmergencyCaseCreateSerializer fields exactly
       // If linking existing patient, use patient_id and send minimal case fields
       const isExistingPatient = !!form.patient_id
+      // Minted once per submission (not per HTTP attempt) — stays the same
+      // if this gets queued offline and retried later, so the backend can
+      // recognize a retry of this exact submission and avoid creating a
+      // duplicate case/patient.
+      const idempotencyKey = generateIdempotencyKey()
       const payload = isExistingPatient ? {
         patient_id:            form.patient_id,
         presenting_complaint:  form.presenting_complaint.trim(),
@@ -542,6 +549,7 @@ function CreateCaseModal({ open, onClose, onCreated }) {
         obstetric_history:     form.obstetric_history.trim(),
         vital_signs:           (() => { const vs = {}; Object.entries(form.vital_signs).forEach(([k,v]) => { if (v !== '') vs[k]=Number(v) }); return vs })(),
         referring_facility:    form.referring_facility,
+        idempotency_key:       idempotencyKey,
       } : {
         patient_name:          form.patient_name.trim(),
         patient_age:           Number(form.patient_age),
@@ -560,6 +568,7 @@ function CreateCaseModal({ open, onClose, onCreated }) {
         obstetric_history:     form.obstetric_history.trim(),
         vital_signs,
         referring_facility:    form.referring_facility,
+        idempotency_key:       idempotencyKey,
       }
       const facilityLabel = facilities.find(f => f.id === form.referring_facility)?.name || 'facility'
       const result = await submitOrQueue({

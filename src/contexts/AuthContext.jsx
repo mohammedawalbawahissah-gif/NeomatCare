@@ -95,10 +95,15 @@ export const AuthProvider = ({ children }) => {
   };
 
   // ── Register step 2 ── POST /api/auth/verify-otp/ → { access, refresh, user }
+  // or, for staff roles awaiting approval, { pending_approval: true, user, message }
+  // and no tokens at all — see STAFF_ROLES_REQUIRING_APPROVAL on the backend.
   const verifyOtp = async (userId, code) => {
     setError(null);
     try {
       const { data } = await authApi.verifyOtp({ user_id: userId, code });
+      if (data.pending_approval) {
+        return { success: true, pendingApproval: true, user: data.user, message: data.message };
+      }
       await loginWithTokens(data.access, data.refresh, data.user);
       return { success: true, user: data.user };
     } catch (err) {

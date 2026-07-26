@@ -3,6 +3,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { facilitiesApi } from '../../api/client';
 import { Input, Select, Button, ErrorBanner } from '../../components/ui';
@@ -20,8 +21,9 @@ const FACILITY_REQUIRED = ['health_worker', 'facility_admin'];
 export default function RegisterScreen({ navigation }) {
   const { register, verifyOtp, resendOtp, error, clearError } = useAuth();
 
-  const [step, setStep] = useState('details'); // 'details' | 'otp'
+  const [step, setStep] = useState('details'); // 'details' | 'otp' | 'pending'
   const [otpMeta, setOtpMeta] = useState(null); // { userId, channel, email, phone }
+  const [pendingMessage, setPendingMessage] = useState('');
 
   // ── Step 1 state ──
   const [form, setForm] = useState({
@@ -84,8 +86,38 @@ export default function RegisterScreen({ navigation }) {
         verifyOtp={verifyOtp}
         resendOtp={resendOtp}
         onBack={() => setStep('details')}
-        onVerified={() => { /* AuthContext already logged the user in; RootNavigator will redirect */ }}
+        onVerified={(result) => {
+          if (result?.pendingApproval) {
+            setPendingMessage(result.message || '');
+            setStep('pending');
+            return;
+          }
+          /* AuthContext already logged the user in; RootNavigator will redirect */
+        }}
       />
+    );
+  }
+
+  if (step === 'pending') {
+    return (
+      <View style={[styles.container, styles.centeredScreen]}>
+        <View style={styles.pendingCard}>
+          <View style={styles.pendingIconWrap}>
+            <Ionicons name="time-outline" size={44} color={Colors.warningDark} />
+          </View>
+          <Text style={styles.pendingTitle}>Awaiting Approval</Text>
+          <Text style={styles.pendingBody}>
+            {pendingMessage ||
+              'Your account has been verified. A Facility Admin or SuperAdmin needs to approve it before you can log in — you\'ll be able to sign in once that happens.'}
+          </Text>
+          <Button
+            title="Back to Sign In"
+            onPress={() => navigation.navigate('Login')}
+            fullWidth
+            style={{ marginTop: Spacing[5] }}
+          />
+        </View>
+      </View>
     );
   }
 
@@ -163,7 +195,7 @@ export default function RegisterScreen({ navigation }) {
   );
 }
 
-// ─── Step 2: OTP entry — shared shape with PatientRegisterScreen ─────────────
+// ─── Step 2: OTP entry — shared shape with WellnessCompanionScreen ───────────
 function OtpStep({ meta, verifyOtp, resendOtp, onBack, onVerified }) {
   const [code, setCode]           = useState('');
   const [loading, setLoading]     = useState(false);
@@ -180,7 +212,7 @@ function OtpStep({ meta, verifyOtp, resendOtp, onBack, onVerified }) {
     const result = await verifyOtp(meta.userId, code);
     setLoading(false);
     if (!result.success) { setError(result.error || 'Invalid or expired code.'); return; }
-    onVerified();
+    onVerified(result);
   };
 
   const handleResend = async () => {
@@ -244,4 +276,9 @@ const styles = StyleSheet.create({
   infoBox:  { backgroundColor: Colors.infoLight, borderRadius: Radius.md, padding: Spacing[3], marginBottom: Spacing[3] },
   infoText: { color: Colors.infoDark, fontSize: Typography.sm },
   helperText: { fontSize: Typography.xs, color: Colors.gray400, marginTop: -Spacing[2], marginBottom: Spacing[2] },
+  centeredScreen: { alignItems: 'center', justifyContent: 'center', padding: Spacing[5] },
+  pendingCard: { backgroundColor: Colors.white, borderRadius: Radius.xl, padding: Spacing[6], alignItems: 'center', width: '100%', maxWidth: 420, ...Shadow.md },
+  pendingIconWrap: { width: 76, height: 76, borderRadius: 38, backgroundColor: Colors.warningLight, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing[4] },
+  pendingTitle: { fontSize: Typography.xl, fontWeight: Typography.bold, color: Colors.textPrimary, marginBottom: Spacing[2] },
+  pendingBody: { fontSize: Typography.sm, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 },
 });

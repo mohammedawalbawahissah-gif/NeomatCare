@@ -25,7 +25,7 @@ import { useAuth } from '../contexts/AuthContext';
 // Auth
 import LoginScreen           from '../screens/auth/LoginScreen';
 import RegisterScreen        from '../screens/auth/RegisterScreen';
-import PatientRegisterScreen from '../screens/auth/PatientRegisterScreen';
+import WellnessCompanionScreen from '../screens/auth/WellnessCompanionScreen';
 
 // Shared
 import DashboardScreen from '../screens/dashboard/DashboardScreen';
@@ -81,7 +81,7 @@ const AuthStack = () => (
   <Stack.Navigator screenOptions={NO_HEADER}>
     <Stack.Screen name="Login"           component={LoginScreen} />
     <Stack.Screen name="Register"        component={RegisterScreen} />
-    <Stack.Screen name="PatientRegister" component={PatientRegisterScreen} />
+    <Stack.Screen name="PatientRegister" component={WellnessCompanionScreen} />
   </Stack.Navigator>
 );
 

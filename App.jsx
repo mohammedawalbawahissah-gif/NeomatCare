@@ -6,7 +6,6 @@ import { AuthProvider } from './src/contexts/AuthContext';
 import { OfflineQueueProvider } from './src/contexts/OfflineQueueContext';
 import RootNavigator from './src/navigation/RootNavigator';
 import { navigationRef } from './src/navigation/navigationRef';
-import OfflineBanner from './src/components/ui/OfflineBanner';
 
 export default function App() {
   return (
@@ -15,7 +14,6 @@ export default function App() {
         <OfflineQueueProvider>
           <NavigationContainer ref={navigationRef}>
             <StatusBar style="auto" />
-            <OfflineBanner />
             <RootNavigator />
           </NavigationContainer>
         </OfflineQueueProvider>

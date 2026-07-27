@@ -118,6 +118,7 @@ export const wellnessApi = {
   listCycleEntries: ()     => api.get('/api/wellness/cycle/'),
   addCycleEntry:    (data) => api.post('/api/wellness/cycle/', data),
   cyclePrediction:  ()     => api.get('/api/wellness/cycle/prediction/'),
+  childNutrition:   (patientId) => api.get(`/api/wellness/child-nutrition/${patientId}/`),
 }
 
 // ── Users ─────────────────────────────────────────────────────────────────────

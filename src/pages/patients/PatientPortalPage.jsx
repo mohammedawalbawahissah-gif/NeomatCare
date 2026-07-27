@@ -953,12 +953,20 @@ function HouseholdTab() {
 function NutritionTab() {
   const [household, setHousehold] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [guidanceByChild, setGuidanceByChild] = useState({})
 
   useEffect(() => {
     householdsApi.list()
       .then(({ data }) => {
         const list = Array.isArray(data) ? data : data.results || []
-        setHousehold(list[0] || null)
+        const h = list[0] || null
+        setHousehold(h)
+        const children = (h?.members || []).filter(m => m.patient_type === 'child')
+        children.forEach(c => {
+          wellnessApi.childNutrition(c.id)
+            .then(({ data }) => setGuidanceByChild(g => ({ ...g, [c.id]: data })))
+            .catch(() => setGuidanceByChild(g => ({ ...g, [c.id]: null })))
+        })
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -970,35 +978,57 @@ function NutritionTab() {
 
   return (
     <div>
-      <div style={{ ...card, background:'#fffbeb', border:'1px solid #fde68a' }}>
-        <div style={{ display:'flex', alignItems:'flex-start', gap:'10px' }}>
-          <Sparkles size={18} color="#b45309" style={{ flexShrink:0, marginTop:'2px' }} />
-          <div>
-            <p style={{ margin:0, fontWeight:600, fontSize:'0.9rem', color:'#92400e' }}>Age-appropriate feeding guidance</p>
-            <p style={{ margin:'4px 0 0', fontSize:'0.82rem', color:'#78350f' }}>
-              Coming soon — personalised guidance for your children is still being built. Your health worker can advise on feeding during your next visit.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div style={card}>
-        <h4 style={{ margin:'0 0 0.75rem', fontSize:'0.9rem', fontWeight:700, color:'#0f172a' }}>Children Under Five</h4>
-        {children.length === 0 ? (
+      {children.length === 0 ? (
+        <div style={card}>
+          <h4 style={{ margin:'0 0 0.5rem', fontSize:'0.9rem', fontWeight:700, color:'#0f172a' }}>Children Under Five</h4>
           <p style={{ margin:0, fontSize:'0.85rem', color:'#94a3b8' }}>
             No children under five linked to your household yet.
           </p>
-        ) : (
-          <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
-            {children.map(c => (
-              <div key={c.id} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'8px 0', borderBottom:'1px solid #f1f5f9' }}>
-                <Baby size={16} color="#64748b" />
-                <p style={{ margin:0, fontSize:'0.875rem', fontWeight:500, color:'#0f172a' }}>{c.patient_name} · Age {c.age}</p>
+        </div>
+      ) : (
+        children.map(c => {
+          const g = guidanceByChild[c.id]
+          return (
+            <div key={c.id} style={card}>
+              <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'10px' }}>
+                <Baby size={18} color="#207652" />
+                <p style={{ margin:0, fontWeight:700, fontSize:'0.95rem', color:'#0f172a' }}>{c.patient_name} · Age {c.age}</p>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+
+              {g === undefined ? (
+                <p style={{ margin:0, fontSize:'0.82rem', color:'#94a3b8' }}>Loading guidance…</p>
+              ) : g === null ? (
+                <p style={{ margin:0, fontSize:'0.82rem', color:'#94a3b8' }}>
+                  No date of birth on file yet — ask your health worker to add one so we can show age-appropriate guidance.
+                </p>
+              ) : (
+                <>
+                  <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:'10px', padding:'10px 12px', marginBottom:'10px' }}>
+                    <p style={{ margin:'0 0 6px', fontSize:'0.8rem', fontWeight:600, color:'#166534' }}>
+                      Feeding guidance — {g.age_band}
+                    </p>
+                    <ul style={{ margin:0, paddingLeft:'1.1rem' }}>
+                      {g.feeding_tips.map((tip, i) => (
+                        <li key={i} style={{ fontSize:'0.78rem', color:'#166534', marginBottom:'3px' }}>{tip}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:'10px', padding:'10px 12px' }}>
+                    <p style={{ margin:'0 0 6px', fontSize:'0.8rem', fontWeight:600, color:'#991b1b' }}>
+                      Seek care immediately if you see
+                    </p>
+                    <ul style={{ margin:0, paddingLeft:'1.1rem' }}>
+                      {g.danger_signs.slice(0, 5).map((sign, i) => (
+                        <li key={i} style={{ fontSize:'0.78rem', color:'#991b1b', marginBottom:'3px' }}>{sign}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </>
+              )}
+            </div>
+          )
+        })
+      )}
     </div>
   )
 }

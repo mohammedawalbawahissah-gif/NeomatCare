@@ -43,6 +43,31 @@ class CycleEntry(models.Model):
         return f"Cycle entry for {self.user_id} starting {self.period_start}"
 
 
+class CycleTrackerState(models.Model):
+    """
+    De-duplication state for the daily cycle/fertile-window reminder job
+    (see apps/wellness/management/commands/send_cycle_updates.py).
+    Restored — was referenced by that command but had been dropped from
+    this file; the migration (0002_cycletrackerstate) was still present
+    and the table still exists, so this just realigns the model with it.
+    """
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="cycle_tracker_state",
+        limit_choices_to={"role": "patient"},
+    )
+    last_notified_date             = models.DateField(null=True, blank=True)
+    last_notified_predicted_start  = models.DateField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "wellness_cycle_tracker_state"
+
+    def __str__(self):
+        return f"Cycle tracker state for {self.user_id}"
+
+
 class PregnancyTrackerState(models.Model):
     patient = models.OneToOneField(
         "cases.Patient",

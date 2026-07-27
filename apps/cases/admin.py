@@ -2,7 +2,22 @@
 apps/cases/admin.py
 """
 from django.contrib import admin
-from .models import Patient, EmergencyCase, TriageNote
+from .models import Patient, EmergencyCase, TriageNote, Household, GrowthRecord
+
+
+@admin.register(Household)
+class HouseholdAdmin(admin.ModelAdmin):
+    list_display    = ["id", "head_name", "town", "facility", "food_security_flag", "deleted_at"]
+    list_filter     = ["food_security_flag", "facility"]
+    readonly_fields = ["id", "created_at"]
+    search_fields   = ["head_name", "town"]
+
+
+@admin.register(GrowthRecord)
+class GrowthRecordAdmin(admin.ModelAdmin):
+    list_display    = ["id", "patient", "record_date", "weight_kg", "muac_cm", "facility"]
+    list_filter     = ["facility"]
+    readonly_fields = ["id", "created_at"]
 
 
 @admin.register(Patient)

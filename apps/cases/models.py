@@ -64,6 +64,79 @@ class RiskLevel(models.TextChoices):
     HIGH   = "high",   "High"
 
 
+class FoodSecurityStatus(models.TextChoices):
+    SECURE  = "secure",  "Secure"
+    AT_RISK = "at_risk", "At Risk"
+    INSECURE = "insecure", "Insecure"
+    UNKNOWN = "unknown", "Unknown"
+
+
+class Household(models.Model):
+    """
+    A compound/household grouping for patients registered at the same
+    address — lets a health worker prioritise across an entire household
+    (mother + children + other dependents) in one pass, rather than one
+    patient record at a time.
+
+    Aggregate risk and food-security status are read off this model by
+    the household list views; the underlying clinical risk still lives
+    on each member Patient, same as before.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    head_name = models.CharField(max_length=200, blank=True, default="")
+    town      = models.CharField(max_length=100, blank=True)
+    latitude  = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
+
+    food_security_flag = models.CharField(
+        max_length=10, choices=FoodSecurityStatus.choices, default=FoodSecurityStatus.UNKNOWN,
+        help_text="Feeds the nutrition-guidance content engine for this household's children."
+    )
+
+    facility = models.ForeignKey(
+        "facilities.HealthFacility",
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="households",
+    )
+    created_by = models.ForeignKey(
+        "accounts.User", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="created_households",
+    )
+
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Household — {self.head_name or self.id}"
+
+    @property
+    def is_deleted(self):
+        return self.deleted_at is not None
+
+    def soft_delete(self):
+        self.deleted_at = timezone.now()
+        self.save(update_fields=["deleted_at"])
+
+    @property
+    def aggregate_risk_level(self):
+        """
+        Max risk level across active members — mirrors RiskLevel ordering.
+        Used to sort the household list so the highest-risk compound
+        surfaces first, the same way individual patients sort today.
+        """
+        order = {RiskLevel.LOW: 0, RiskLevel.MEDIUM: 1, RiskLevel.HIGH: 2}
+        levels = self.members.filter(deleted_at__isnull=True).values_list("risk_level", flat=True)
+        if not levels:
+            return RiskLevel.LOW
+        return max(levels, key=lambda lvl: order.get(lvl, 0))
+
+
 class Patient(models.Model):
     """
     Persistent patient identity record.
@@ -92,6 +165,18 @@ class Patient(models.Model):
     town        = models.CharField(max_length=100, blank=True)
     blood_group = models.CharField(max_length=10, choices=BloodGroup.choices, default=BloodGroup.UNKNOWN)
     anc_visits  = models.PositiveIntegerField(default=0, help_text="Total ANC visits (auto-updated from ANCVisit log)")
+
+    # ── Patient type & household ────────────────────────────────────────
+    # "maternal" (default, unchanged behaviour) vs "child" — a child record
+    # skips obstetric fields and is the target of GrowthRecord / nutrition
+    # content instead. household is optional so existing records are
+    # unaffected; new registrations can attach to one at creation.
+    PATIENT_TYPE_CHOICES = [("maternal", "Maternal"), ("child", "Child (under five)")]
+    patient_type = models.CharField(max_length=10, choices=PATIENT_TYPE_CHOICES, default="maternal")
+    household = models.ForeignKey(
+        Household, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="members",
+    )
 
     # ── Next of kin ───────────────────────────────────────────────────────
     next_of_kin_name         = models.CharField(max_length=200, blank=True)
@@ -225,6 +310,47 @@ class ANCVisit(models.Model):
         # Keep Patient.anc_visits count in sync
         count = ANCVisit.objects.filter(patient=self.patient).count()
         Patient.objects.filter(pk=self.patient_id).update(anc_visits=count)
+
+
+class GrowthRecord(models.Model):
+    """
+    Individual growth-monitoring entry for a child (patient_type="child").
+    Append-only log, same pattern as ANCVisit — logged during a home
+    visit or facility check, feeds the under-five nutrition content
+    engine (apps/wellness) via the child's age-in-months and the
+    household's food_security_flag.
+
+    Acute-malnutrition classification (WHO MUAC red/yellow/green bands)
+    is deliberately not computed here yet — logged as a roadmap item;
+    for now this just records the raw measurements and lets a worker
+    see the trend.
+    """
+    id      = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="growth_records")
+
+    record_date = models.DateField()
+    weight_kg   = models.FloatField(null=True, blank=True)
+    muac_cm     = models.FloatField(null=True, blank=True, help_text="Mid-upper arm circumference, cm")
+    height_cm   = models.FloatField(null=True, blank=True)
+
+    facility     = models.ForeignKey(
+        "facilities.HealthFacility", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="growth_records"
+    )
+    recorded_by  = models.ForeignKey(
+        "accounts.User", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="growth_records_recorded"
+    )
+
+    notes = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-record_date"]
+
+    def __str__(self):
+        return f"Growth record — {self.patient} on {self.record_date}"
 
 
 class PatientConsent(models.Model):

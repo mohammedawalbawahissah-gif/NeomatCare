@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.permissions import IsHealthWorkerOrFacilityAdmin, IsHealthWorkerOrFacilityAdminOrPatient
-from .models import Patient, ANCVisit, PatientConsent, EmergencyCase, TriageNote
+from .models import Patient, ANCVisit, PatientConsent, EmergencyCase, TriageNote, Household, GrowthRecord
 from .serializers import (
     PatientListSerializer, PatientDetailSerializer,
     PatientCreateSerializer, PatientUpdateSerializer,
@@ -16,6 +16,8 @@ from .serializers import (
     EmergencyCaseCreateSerializer, EmergencyCaseUpdateSerializer,
     EmergencyCaseListSerializer, EmergencyCaseDetailSerializer,
     TriageNoteSerializer,
+    HouseholdListSerializer, HouseholdDetailSerializer, HouseholdCreateUpdateSerializer,
+    GrowthRecordSerializer,
 )
 
 
@@ -142,6 +144,126 @@ class PatientRiskView(APIView):
             return Response({"detail": "Patient not found."}, status=status.HTTP_404_NOT_FOUND)
         patient.compute_risk()
         return Response({"risk_level": patient.risk_level, "risk_flags": patient.risk_flags})
+
+
+# ── Household Views ───────────────────────────────────────────────────────────
+# Visible to health_worker, facility_admin, superadmin (ranked-by-risk view,
+# scoped per role below) and patient (own household only — plain member list,
+# no ranking, enforced by the frontend using HouseholdDetailSerializer as-is;
+# the patient never hits the list endpoint's ranking path).
+
+class HouseholdListCreateView(APIView):
+    permission_classes = [IsAuthenticated, IsHealthWorkerOrFacilityAdminOrPatient]
+
+    def get(self, request):
+        qs = Household.objects.filter(deleted_at__isnull=True).select_related("facility").prefetch_related("members")
+
+        user = request.user
+        if user.role == "patient":
+            if hasattr(user, "patient_profile") and user.patient_profile.household_id:
+                qs = qs.filter(id=user.patient_profile.household_id)
+            else:
+                return Response([])
+        elif user.role == "facility_admin":
+            qs = qs.filter(facility=user.facility)
+        # health_worker and superadmin: unscoped, matches existing Patient list convention
+
+        households = sorted(
+            qs, key=lambda h: {"low": 0, "medium": 1, "high": 2}.get(h.aggregate_risk_level, 0),
+            reverse=True,
+        )
+        return Response(HouseholdListSerializer(households, many=True).data)
+
+    def post(self, request):
+        if request.user.role == "patient":
+            return Response({"detail": "Not permitted."}, status=status.HTTP_403_FORBIDDEN)
+        serializer = HouseholdCreateUpdateSerializer(data=request.data)
+        if serializer.is_valid():
+            facility = serializer.validated_data.get("facility") or getattr(request.user, "facility", None)
+            household = serializer.save(created_by=request.user, facility=facility)
+            return Response(HouseholdDetailSerializer(household).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class HouseholdDetailView(APIView):
+    permission_classes = [IsAuthenticated, IsHealthWorkerOrFacilityAdminOrPatient]
+
+    def _get_household(self, pk, user):
+        try:
+            household = Household.objects.select_related("facility").prefetch_related("members").get(
+                pk=pk, deleted_at__isnull=True
+            )
+        except Household.DoesNotExist:
+            return None, Response({"detail": "Household not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if user.role == "patient":
+            if not hasattr(user, "patient_profile") or user.patient_profile.household_id != household.id:
+                return None, Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+        elif user.role == "facility_admin" and household.facility_id != user.facility_id:
+            return None, Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+        return household, None
+
+    def get(self, request, pk):
+        household, err = self._get_household(pk, request.user)
+        if err:
+            return err
+        return Response(HouseholdDetailSerializer(household).data)
+
+    def patch(self, request, pk):
+        household, err = self._get_household(pk, request.user)
+        if err:
+            return err
+        if request.user.role == "patient":
+            return Response({"detail": "Patients cannot edit household records."}, status=status.HTTP_403_FORBIDDEN)
+        serializer = HouseholdCreateUpdateSerializer(household, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            household.refresh_from_db()
+            return Response(HouseholdDetailSerializer(household).data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        if request.user.role != "superadmin":
+            return Response({"detail": "Only superadmins can delete households."}, status=status.HTTP_403_FORBIDDEN)
+        household, err = self._get_household(pk, request.user)
+        if err:
+            return err
+        household.soft_delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ── Growth Record Views (under-five nutrition/growth log) ──────────────────────
+
+class GrowthRecordListCreateView(APIView):
+    permission_classes = [IsAuthenticated, IsHealthWorkerOrFacilityAdminOrPatient]
+
+    def get(self, request, pk):
+        try:
+            patient = Patient.objects.get(pk=pk, deleted_at__isnull=True)
+        except Patient.DoesNotExist:
+            return Response({"detail": "Patient not found."}, status=status.HTTP_404_NOT_FOUND)
+        if request.user.role == "patient":
+            if not hasattr(request.user, "patient_profile") or request.user.patient_profile.id != patient.id:
+                return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+        records = GrowthRecord.objects.select_related("facility", "recorded_by").filter(patient=patient)
+        return Response(GrowthRecordSerializer(records, many=True).data)
+
+    def post(self, request, pk):
+        if request.user.role == "patient":
+            return Response({"detail": "Not permitted."}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            patient = Patient.objects.get(pk=pk, deleted_at__isnull=True)
+        except Patient.DoesNotExist:
+            return Response({"detail": "Patient not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = GrowthRecordSerializer(data=request.data)
+        if serializer.is_valid():
+            record = serializer.save(
+                patient=patient, recorded_by=request.user,
+                facility=getattr(request.user, "facility", None),
+            )
+            return Response(GrowthRecordSerializer(record).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 # ── ANC Visit Views ───────────────────────────────────────────────────────────

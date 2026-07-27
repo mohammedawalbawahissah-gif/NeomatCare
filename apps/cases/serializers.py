@@ -2,7 +2,10 @@
 apps/cases/serializers.py
 """
 from rest_framework import serializers
-from .models import Patient, ANCVisit, PatientConsent, EmergencyCase, TriageNote, DangerSign, VITAL_SIGNS_SCHEMA
+from .models import (
+    Patient, ANCVisit, PatientConsent, EmergencyCase, TriageNote, DangerSign, VITAL_SIGNS_SCHEMA,
+    Household, GrowthRecord,
+)
 
 
 # ── ANC Visit ─────────────────────────────────────────────────────────────────
@@ -40,13 +43,15 @@ class PatientListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for patient search / list views."""
     case_count      = serializers.IntegerField(source="cases.count", read_only=True)
     last_case_date  = serializers.SerializerMethodField()
+    household_name  = serializers.CharField(source="household.head_name", read_only=True, allow_null=True)
 
     class Meta:
         model  = Patient
         fields = [
             "id", "patient_name", "hospital_id", "patient_phone_number",
-            "age", "town", "blood_group", "anc_visits",
+            "age", "town", "blood_group", "anc_visits", "patient_type",
             "risk_level", "consent_given",
+            "household", "household_name",
             "case_count", "last_case_date", "created_at",
         ]
 
@@ -64,20 +69,24 @@ class PatientDetailSerializer(serializers.ModelSerializer):
     )
     case_count       = serializers.IntegerField(source="cases.count", read_only=True)
     has_portal_access = serializers.SerializerMethodField()
+    household_name   = serializers.CharField(source="household.head_name", read_only=True, allow_null=True)
+    growth_records   = serializers.SerializerMethodField()
 
     class Meta:
         model  = Patient
         fields = [
             "id", "patient_name", "hospital_id", "patient_phone_number",
-            "age", "date_of_birth", "town", "blood_group",
+            "age", "date_of_birth", "town", "blood_group", "patient_type",
             "next_of_kin_name", "next_of_kin_phone", "next_of_kin_relationship",
             "expected_delivery_date", "gravida", "parity",
             "anc_visits", "risk_level", "risk_flags", "notes",
             "consent_given", "consent_given_at",
             "registered_at_facility", "registered_at_facility_name",
+            "household", "household_name",
             "has_portal_access",
             "case_count",
             "anc_visit_log",
+            "growth_records",
             "consents",
             "created_at", "updated_at",
         ]
@@ -85,6 +94,11 @@ class PatientDetailSerializer(serializers.ModelSerializer):
 
     def get_has_portal_access(self, obj):
         return obj.patient_user_id is not None
+
+    def get_growth_records(self, obj):
+        if obj.patient_type != "child":
+            return []
+        return GrowthRecordSerializer(obj.growth_records.all(), many=True).data
 
 
 class PatientCreateSerializer(serializers.ModelSerializer):
@@ -95,10 +109,10 @@ class PatientCreateSerializer(serializers.ModelSerializer):
         model  = Patient
         fields = [
             "patient_name", "hospital_id", "patient_phone_number",
-            "age", "date_of_birth", "town", "blood_group",
+            "age", "date_of_birth", "town", "blood_group", "patient_type",
             "next_of_kin_name", "next_of_kin_phone", "next_of_kin_relationship",
             "expected_delivery_date", "gravida", "parity",
-            "notes", "facility",
+            "notes", "facility", "household",
         ]
 
     def create(self, validated_data):
@@ -119,9 +133,9 @@ class PatientUpdateSerializer(serializers.ModelSerializer):
         model  = Patient
         fields = [
             "patient_name", "hospital_id", "patient_phone_number",
-            "age", "date_of_birth", "town", "blood_group",
+            "age", "date_of_birth", "town", "blood_group", "patient_type",
             "next_of_kin_name", "next_of_kin_phone", "next_of_kin_relationship",
-            "expected_delivery_date", "gravida", "parity", "notes",
+            "expected_delivery_date", "gravida", "parity", "notes", "household",
         ]
 
 
@@ -320,3 +334,69 @@ class EmergencyCaseDetailSerializer(serializers.ModelSerializer):
             "referring_facility_name", "created_by_name",
             "triage_notes", "created_at",
         ]
+
+
+# ── Growth Record (under-five nutrition/growth log) ────────────────────────────
+
+class GrowthRecordSerializer(serializers.ModelSerializer):
+    recorded_by_name = serializers.CharField(source="recorded_by.name", read_only=True, allow_null=True)
+    facility_name     = serializers.CharField(source="facility.name", read_only=True, allow_null=True)
+
+    class Meta:
+        model  = GrowthRecord
+        fields = [
+            "id", "record_date", "weight_kg", "muac_cm", "height_cm",
+            "facility", "facility_name", "recorded_by", "recorded_by_name",
+            "notes", "created_at",
+        ]
+        read_only_fields = ["id", "recorded_by", "recorded_by_name", "created_at"]
+
+
+# ── Household ────────────────────────────────────────────────────────────────
+
+class HouseholdMemberSerializer(serializers.ModelSerializer):
+    """Lightweight member card, reused on both the worker-facing ranked view
+    and the patient-facing plain member list — the ranking/sort happens at
+    the list-view level, not in this serializer."""
+    class Meta:
+        model  = Patient
+        fields = ["id", "patient_name", "age", "patient_type", "risk_level"]
+
+
+class HouseholdListSerializer(serializers.ModelSerializer):
+    """Used by health_worker / facility_admin / superadmin — includes the
+    aggregate risk used to sort the list, so the highest-risk compound
+    surfaces first."""
+    member_count        = serializers.IntegerField(source="members.count", read_only=True)
+    aggregate_risk_level = serializers.CharField(read_only=True)
+    facility_name        = serializers.CharField(source="facility.name", read_only=True, allow_null=True)
+
+    class Meta:
+        model  = Household
+        fields = [
+            "id", "head_name", "town", "facility", "facility_name",
+            "food_security_flag", "member_count", "aggregate_risk_level",
+            "created_at",
+        ]
+
+
+class HouseholdDetailSerializer(serializers.ModelSerializer):
+    members       = HouseholdMemberSerializer(many=True, read_only=True)
+    facility_name = serializers.CharField(source="facility.name", read_only=True, allow_null=True)
+    aggregate_risk_level = serializers.CharField(read_only=True)
+
+    class Meta:
+        model  = Household
+        fields = [
+            "id", "head_name", "town", "latitude", "longitude",
+            "facility", "facility_name", "food_security_flag",
+            "aggregate_risk_level", "members",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class HouseholdCreateUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = Household
+        fields = ["head_name", "town", "latitude", "longitude", "facility", "food_security_flag"]

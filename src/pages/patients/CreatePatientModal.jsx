@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Modal, Alert, FormField, Spinner } from '@/components/ui'
-import { UserCircle } from 'lucide-react'
+import { UserCircle, Baby } from 'lucide-react'
 import { useOfflineQueue } from '@/contexts/OfflineQueueContext'
 import { QueueKinds } from '@/utils/offlineQueue'
+import { householdsApi } from '@/api/client'
 import VoiceEntryBar, { VoiceEntryTrigger } from '@/components/voice/VoiceEntryBar'
 import useVoiceEntry from '@/hooks/useVoiceEntry'
 
@@ -11,6 +12,7 @@ const labelCls = 'block text-sm font-medium text-slate-700 mb-1'
 
 export default function CreatePatientModal({ open, onClose, onCreated, onQueued }) {
   const [form, setForm] = useState({
+    patient_type: 'maternal', household: '',
     patient_name: '', hospital_id: '', patient_phone_number: '',
     age: '', date_of_birth: '', town: '', blood_group: 'unknown',
     next_of_kin_name: '', next_of_kin_phone: '', next_of_kin_relationship: '',
@@ -18,7 +20,17 @@ export default function CreatePatientModal({ open, onClose, onCreated, onQueued 
   })
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
+  const [households, setHouseholds] = useState([])
   const { submitOrQueue } = useOfflineQueue()
+
+  // Household picker is always available regardless of patient type — a
+  // maternal patient can belong to a tracked household too, not just children.
+  useEffect(() => {
+    if (!open) return
+    householdsApi.list().then(({ data }) => {
+      setHouseholds(Array.isArray(data) ? data : data.results || [])
+    }).catch(() => { /* picker just stays empty — not a blocking failure */ })
+  }, [open])
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
   const setVoiceField = k => (v) => setForm(f => ({ ...f, [k]: v }))
@@ -36,16 +48,27 @@ export default function CreatePatientModal({ open, onClose, onCreated, onQueued 
 
   const handleSave = async () => {
     if (!form.age) { setError('Age is required.'); return }
+    if (form.patient_type === 'child' && Number(form.age) > 5) {
+      setError('Child records are for children under 5 years old. Use Maternal for older patients.')
+      return
+    }
     setSaving(true); setError('')
     try {
       const payload = { ...form }
       // Convert empty strings to null for optional fields
-      ;['date_of_birth','expected_delivery_date','gravida','parity'].forEach(k => {
+      ;['date_of_birth','expected_delivery_date','gravida','parity','household'].forEach(k => {
         if (!payload[k]) payload[k] = null
       })
       if (payload.gravida)  payload.gravida = Number(payload.gravida)
       if (payload.parity)   payload.parity  = Number(payload.parity)
       payload.age = Number(payload.age)
+      // Obstetric fields don't apply to a child record — don't send stale
+      // values even if they were populated before switching the toggle.
+      if (payload.patient_type === 'child') {
+        payload.gravida = null
+        payload.parity = null
+        payload.expected_delivery_date = null
+      }
 
       const result = await submitOrQueue({
         method: 'post',
@@ -74,6 +97,43 @@ export default function CreatePatientModal({ open, onClose, onCreated, onQueued 
         {error && <Alert type="error" message={error}/>}
         <VoiceEntryTrigger onClick={voiceEntry.start} count={voiceFields.length} />
 
+        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">Patient Type</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setForm(f => ({ ...f, patient_type: 'maternal' }))}
+              className={`flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
+                form.patient_type === 'maternal'
+                  ? 'bg-brand-50 border-brand-300 text-brand-700'
+                  : 'border-slate-200 text-slate-500 hover:border-slate-300'
+              }`}
+            >
+              <UserCircle size={15}/> Maternal
+            </button>
+            <button
+              type="button"
+              onClick={() => setForm(f => ({ ...f, patient_type: 'child' }))}
+              className={`flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
+                form.patient_type === 'child'
+                  ? 'bg-brand-50 border-brand-300 text-brand-700'
+                  : 'border-slate-200 text-slate-500 hover:border-slate-300'
+              }`}
+            >
+              <Baby size={15}/> Child
+            </button>
+          </div>
+          <div>
+            <label className={labelCls}>Household</label>
+            <select className={inputCls} value={form.household} onChange={set('household')}>
+              <option value="">Not linked to a household</option>
+              {households.map(h => (
+                <option key={h.id} value={h.id}>{h.head_name || 'Unnamed'} — {h.town || 'No town'}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
         <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">Identity</p>
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
@@ -90,7 +150,13 @@ export default function CreatePatientModal({ open, onClose, onCreated, onQueued 
           </div>
           <div>
             <label className={labelCls}>Age <span className="text-red-500">*</span></label>
-            <input type="number" className={inputCls} value={form.age} onChange={set('age')} min={10} max={60}/>
+            <input
+              type="number" className={inputCls} value={form.age} onChange={set('age')}
+              min={0} max={form.patient_type === 'child' ? 5 : 120}
+            />
+            {form.patient_type === 'child' && (
+              <p className="text-xs text-slate-400 mt-1">Nutrition guidance is available for children under 5.</p>
+            )}
           </div>
           <div>
             <label className={labelCls}>Date of Birth</label>
@@ -110,21 +176,25 @@ export default function CreatePatientModal({ open, onClose, onCreated, onQueued 
           </div>
         </div>
 
-        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mt-2">Obstetric Summary</p>
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className={labelCls}>Gravida</label>
-            <input type="number" className={inputCls} value={form.gravida} onChange={set('gravida')} min={0} placeholder="—"/>
-          </div>
-          <div>
-            <label className={labelCls}>Parity</label>
-            <input type="number" className={inputCls} value={form.parity} onChange={set('parity')} min={0} placeholder="—"/>
-          </div>
-          <div>
-            <label className={labelCls}>Expected Delivery</label>
-            <input type="date" className={inputCls} value={form.expected_delivery_date} onChange={set('expected_delivery_date')}/>
-          </div>
-        </div>
+        {form.patient_type === 'maternal' && (
+          <>
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mt-2">Obstetric Summary</p>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className={labelCls}>Gravida</label>
+                <input type="number" className={inputCls} value={form.gravida} onChange={set('gravida')} min={0} placeholder="—"/>
+              </div>
+              <div>
+                <label className={labelCls}>Parity</label>
+                <input type="number" className={inputCls} value={form.parity} onChange={set('parity')} min={0} placeholder="—"/>
+              </div>
+              <div>
+                <label className={labelCls}>Expected Delivery</label>
+                <input type="date" className={inputCls} value={form.expected_delivery_date} onChange={set('expected_delivery_date')}/>
+              </div>
+            </div>
+          </>
+        )}
 
         <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mt-2">Next of Kin</p>
         <div className="grid grid-cols-3 gap-3">

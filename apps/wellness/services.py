@@ -32,6 +32,7 @@ import logging
 from datetime import date, timedelta
 
 from .content import (
+    get_child_nutrition_content,
     get_daily_content,
     get_monthly_content,
     get_trimester_content,
@@ -66,6 +67,41 @@ def get_pregnancy_snapshot(patient) -> dict | None:
         "weekly_content": get_weekly_content(current_week),
         "monthly_content": get_monthly_content(current_month),
         "trimester_content": get_trimester_content(current_week),
+    }
+
+
+def get_age_months(patient) -> int | None:
+    """Best-effort age-in-months for a child Patient. Prefers date_of_birth
+    (precise); falls back to the coarser `age` (years) field when no DOB is
+    on file yet — same fallback relationship the rest of the app has
+    between precise and self-reported dates. Returns None if neither is
+    available."""
+    if patient.date_of_birth:
+        days = (date.today() - patient.date_of_birth).days
+        return max(0, days // 30)
+    if patient.age is not None:
+        return patient.age * 12
+    return None
+
+
+def get_child_nutrition_snapshot(patient) -> dict | None:
+    """Returns None if this isn't a child record, or there's no age
+    information to key the guidance off yet."""
+    if patient.patient_type != "child":
+        return None
+
+    age_months = get_age_months(patient)
+    if age_months is None:
+        return None
+
+    food_security_flag = (
+        patient.household.food_security_flag if patient.household_id else "unknown"
+    )
+    content = get_child_nutrition_content(age_months, food_security_flag)
+    return {
+        "patient_id": patient.id,
+        "patient_name": patient.patient_name,
+        **content,
     }
 
 

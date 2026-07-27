@@ -83,3 +83,25 @@ class PregnancyTrackerState(models.Model):
 
     def __str__(self):
         return f"Tracker state for patient {self.patient_id} (week {self.last_notified_week})"
+
+
+class ChildNutritionTrackerState(models.Model):
+    """De-duplication state for the daily under-five nutrition update job
+    (send_child_nutrition_updates.py) — mirrors PregnancyTrackerState, but
+    keyed off age BAND rather than week, since feeding guidance only
+    changes when a child crosses into a new band (0-6 / 6-23 / 24-59
+    months), not week to week."""
+    patient = models.OneToOneField(
+        "cases.Patient",
+        on_delete=models.CASCADE,
+        related_name="nutrition_tracker_state",
+    )
+    last_notified_age_band = models.CharField(max_length=20, null=True, blank=True)
+    last_notified_date     = models.DateField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "wellness_child_nutrition_tracker_state"
+
+    def __str__(self):
+        return f"Nutrition tracker state for patient {self.patient_id} ({self.last_notified_age_band})"

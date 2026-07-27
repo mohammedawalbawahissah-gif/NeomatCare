@@ -162,3 +162,113 @@ def get_daily_content(day_of_pregnancy: int, week: int) -> dict:
         "lifestyle_tip": lifestyle,
         "danger_sign_reminder": danger,
     }
+
+
+# ── Under-five nutrition & feeding guidance ─────────────────────────────────
+#
+# Age bands and general feeding practice follow WHO/UNICEF Infant and Young
+# Child Feeding (IYCF) guidance — the same widely-taught public-health
+# education CHPS/nutrition officers already give caregivers, not a novel
+# clinical claim. Danger signs are the standard IMCI (Integrated Management
+# of Childhood Illness) general danger-sign list used to train community
+# health workers — again standard patient/caregiver education, not a
+# diagnostic tool. As with the pregnancy content above, this deliberately
+# does not attempt WHO growth-chart classification (e.g. MUAC red/yellow/
+# green banding) — that belongs in a clinician-reviewed pass, flagged as a
+# roadmap item, not fabricated here.
+#
+# `food_secure_tips` assumes normal household access to food; `resource_limited_tips`
+# swaps in low-cost, locally available options common in Northern Ghana
+# (beans, groundnuts, moringa leaves, soya, eggs) — this is what makes the
+# guidance "local", per the hack brief, rather than generic.
+CHILD_AGE_BANDS = [
+    {
+        "range": (0, 5),  # 0-6 months, inclusive of month 5 (i.e. under 6 months)
+        "title": "0-6 months",
+        "food_secure_tips": [
+            "Breastfeed exclusively — no water, other liquids, or foods needed before 6 months.",
+            "Feed on demand, day and night, at least 8 times in 24 hours.",
+            "Watch for hunger cues (rooting, sucking on hands) rather than a strict schedule.",
+        ],
+        "resource_limited_tips": [
+            "Exclusive breastfeeding is still the best and lowest-cost option — it needs no extra food budget.",
+            "If breastfeeding is difficult, ask your health worker for support before introducing any substitute.",
+            "Continue feeding on demand even if the mother's own diet is limited — breastmilk production adapts; focus any extra food you do have on the breastfeeding mother.",
+        ],
+    },
+    {
+        "range": (6, 23),
+        "title": "6-23 months",
+        "food_secure_tips": [
+            "Continue breastfeeding alongside complementary foods up to age 2 or beyond.",
+            "Aim for a minimum of 4 food groups a day (grains, legumes/nuts, dairy, meat/fish/eggs, fruits/vegetables).",
+            "Feed 2-3 meals a day at 6-8 months, increasing to 3-4 meals plus 1-2 snacks by 12 months.",
+            "Increase food thickness and variety as the child gets older — avoid thin, watery porridge alone.",
+        ],
+        "resource_limited_tips": [
+            "Continue breastfeeding — it remains a key, no-cost source of nutrition through this period.",
+            "Mash local staples (tuo zaafi, TZ, banku, rice) with beans, groundnut paste, or moringa leaf powder to boost protein and micronutrients cheaply.",
+            "Eggs, when available, are an affordable, complete source of protein for this age group.",
+            "Soaked and mashed soybeans or cowpeas can substitute for meat/fish on days they're unavailable.",
+            "Even a small amount of added groundnut paste or oil increases the energy density of a thin porridge.",
+        ],
+    },
+    {
+        "range": (24, 59),
+        "title": "24-59 months",
+        "food_secure_tips": [
+            "Offer 3 family meals a day plus 1-2 healthy snacks.",
+            "Include a variety of foods daily — grains, legumes, vegetables, fruit, and an animal-source food where possible.",
+            "Encourage self-feeding and a consistent mealtime routine.",
+        ],
+        "resource_limited_tips": [
+            "Family meals are appropriate now — no need for separate preparation, just ensure the child gets a fair portion.",
+            "Rotate cheaper protein sources through the week: beans, groundnuts, soya, eggs, or dried fish when available.",
+            "Dark leafy greens (moringa, kontomire/cocoyam leaves) added to soups or stews are a low-cost source of vitamins and iron.",
+            "If a full varied diet isn't possible every day, prioritise variety over quantity within what's available.",
+        ],
+    },
+]
+
+# Standard IMCI general danger signs for under-five children — the same
+# list CHPS workers are trained to screen for. Presented as caregiver
+# education ("seek care now if you see this"), not a diagnostic checklist.
+CHILD_DANGER_SIGNS = [
+    "Not able to drink or breastfeed at all",
+    "Vomits everything",
+    "Convulsions (fits)",
+    "Lethargic or difficult to wake",
+    "Fast or difficult breathing",
+    "Fever (feels hot, or has had a fever for several days)",
+    "Diarrhoea with blood in the stool, or lasting more than a few days",
+    "Swelling of both feet (possible sign of severe malnutrition)",
+    "Very thin or visible wasting",
+]
+
+
+def get_child_age_band(age_months: int) -> dict:
+    for band in CHILD_AGE_BANDS:
+        lo, hi = band["range"]
+        if lo <= age_months <= hi:
+            return band
+    # Older than the oldest band (5+) or a bad/negative input — fall back
+    # to the closest defined band rather than raising.
+    return CHILD_AGE_BANDS[-1] if age_months > CHILD_AGE_BANDS[-1]["range"][1] else CHILD_AGE_BANDS[0]
+
+
+def get_child_nutrition_content(age_months: int, food_security_flag: str = "unknown") -> dict:
+    """food_security_flag: one of Household.FoodSecurityStatus values
+    ('secure', 'at_risk', 'insecure', 'unknown'). 'at_risk' and 'insecure'
+    both get the resource-limited tips — the distinction between them is
+    about how urgently a health worker should follow up, not about which
+    guidance to show."""
+    band = get_child_age_band(age_months)
+    use_resource_limited = food_security_flag in ("at_risk", "insecure")
+    return {
+        "age_months": age_months,
+        "age_band": band["title"],
+        "feeding_tips": band["resource_limited_tips"] if use_resource_limited else band["food_secure_tips"],
+        "danger_signs": CHILD_DANGER_SIGNS,
+        "food_security_flag": food_security_flag,
+        "guidance_scope": "resource_limited" if use_resource_limited else "standard",
+    }

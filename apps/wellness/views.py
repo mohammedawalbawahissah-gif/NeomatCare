@@ -6,7 +6,7 @@ from apps.cases.models import Patient
 
 from .models import CycleEntry
 from .serializers import CycleEntrySerializer, SetEddSerializer
-from .services import get_pregnancy_snapshot, predict_next_cycle, set_self_reported_edd
+from .services import get_child_nutrition_snapshot, get_pregnancy_snapshot, predict_next_cycle, set_self_reported_edd
 
 
 class MyPregnancySnapshotView(APIView):
@@ -68,3 +68,49 @@ class CyclePredictionView(APIView):
 
     def get(self, request):
         return Response(predict_next_cycle(request.user))
+
+
+class ChildNutritionView(APIView):
+    """GET /api/wellness/child-nutrition/<uuid:patient_id>/
+    Age-banded feeding guidance + danger signs for a child patient,
+    scoped by the child's household food_security_flag.
+
+    Access:
+      - health_worker / facility_admin / superadmin: any child record
+        (matches the existing GrowthRecord view convention — those roles
+        aren't further restricted here).
+      - patient: only a child in THEIR OWN household — i.e. a caregiver
+        can view guidance for their own children even though the child
+        itself has no portal login. Not restricted to only their own
+        linked Patient record, since that would make this unreachable
+        for the exact caregiver use case it exists for.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, patient_id):
+        try:
+            patient = Patient.objects.select_related("household").get(
+                pk=patient_id, deleted_at__isnull=True
+            )
+        except Patient.DoesNotExist:
+            return Response({"detail": "Patient not found."}, status=404)
+
+        if request.user.role == "patient":
+            own_patient = Patient.objects.filter(patient_user=request.user).first()
+            same_household = (
+                own_patient
+                and patient.household_id
+                and own_patient.household_id == patient.household_id
+            )
+            is_self = own_patient and own_patient.id == patient.id
+            if not (same_household or is_self):
+                return Response({"detail": "Permission denied."}, status=403)
+
+        snapshot = get_child_nutrition_snapshot(patient)
+        if not snapshot:
+            reason = "not_a_child" if patient.patient_type != "child" else "no_age_on_file"
+            return Response(
+                {"detail": "No nutrition guidance available for this record.", "reason": reason},
+                status=404,
+            )
+        return Response(snapshot)

@@ -257,8 +257,12 @@ DEFAULT_FROM_EMAIL  = env("DEFAULT_FROM_EMAIL",  default="NeoMatCare <noreply@ne
 EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
 
 # ── SMS (Africa's Talking — set via environment variables) ──────────────────
-AT_USERNAME = env("AT_USERNAME", default="sandbox")
-AT_API_KEY  = env("AT_API_KEY", default="")
+# Railway's env vars are named AFRICASTALKING_USERNAME / AFRICASTALKING_API_KEY.
+# These were previously read as AT_USERNAME/AT_API_KEY, which don't exist on
+# Railway at all — that mismatch meant every deploy silently fell back to
+# username="sandbox", api_key="" and every SMS send failed AT's auth check.
+AT_USERNAME = env("AFRICASTALKING_USERNAME", default="sandbox")
+AT_API_KEY  = env("AFRICASTALKING_API_KEY", default="")
 
 # ── Voice (GhanaNLP Khaya AI — local-language STT/TTS) ───────────────────────
 # Sign up at https://translation.ghananlp.org/ to get a key. Free tier is

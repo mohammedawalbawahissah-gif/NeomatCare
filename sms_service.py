@@ -5,9 +5,9 @@ Africa's Talking SMS integration for NeoMatCare / Maternal Referral.
 
 Place this file at the project root (next to referral_engine.py).
 
-Environment variables (add to .env):
-    AT_USERNAME=sandbox          # always 'sandbox' for testing
-    AT_API_KEY=your_key_here     # AT dashboard → Settings → API Key
+Environment variables (set on Railway / add to .env):
+    AFRICASTALKING_USERNAME=sandbox   # 'sandbox' only for local testing
+    AFRICASTALKING_API_KEY=your_key_here     # AT dashboard → Settings → API Key
 
 Install:
     pipenv install africastalking
@@ -22,9 +22,13 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 # ── Initialise AT SDK once at import time ────────────────────────────────
+# NOTE: previously read AT_USERNAME/AT_API_KEY, which don't exist as env
+# vars on Railway (they're named AFRICASTALKING_USERNAME/AFRICASTALKING_API_KEY
+# there) — that mismatch silently initialized with username="sandbox",
+# api_key="" on every deploy, which is why every send failed AT's auth check.
 africastalking.initialize(
-    username=os.environ.get("AT_USERNAME", "sandbox"),
-    api_key=os.environ.get("AT_API_KEY", ""),
+    username=os.environ.get("AFRICASTALKING_USERNAME", "sandbox"),
+    api_key=os.environ.get("AFRICASTALKING_API_KEY", ""),
 )
 _sms = africastalking.SMS
 

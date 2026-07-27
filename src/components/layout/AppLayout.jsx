@@ -6,7 +6,7 @@ import {
   LayoutDashboard, ClipboardList, ArrowRightLeft, Truck,
   Video, Building2, Users, LogOut, Menu, X, Heart,
   ChevronRight, Bell, Baby, Star, PhoneCall, HeartPulse, UserCircle,
-  Settings, CheckCheck, Stethoscope,
+  Settings, CheckCheck, Stethoscope, Home, Sparkles,
 } from 'lucide-react'
 import clsx from 'clsx'
 import AssistantWidget from '@/components/ai/AssistantWidget'
@@ -17,6 +17,8 @@ const NAV_BY_ROLE = {
   health_worker: [
     { to: '/app/dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
     { to: '/app/patients',       label: 'Patients',       icon: UserCircle },
+    { to: '/app/households',     label: 'Households',     icon: Home },
+    { to: '/app/nutrition',      label: 'Nutrition',      icon: Baby },
     { to: '/app/cases',          label: 'Cases',          icon: ClipboardList },
     { to: '/app/referrals',      label: 'Referrals',      icon: ArrowRightLeft },
     { to: '/app/consultations',  label: 'Consultations',  icon: Video },
@@ -25,6 +27,7 @@ const NAV_BY_ROLE = {
   facility_admin: [
     { to: '/app/dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
     { to: '/app/patients',       label: 'Patients',       icon: UserCircle },
+    { to: '/app/households',     label: 'Households',     icon: Home },
     { to: '/app/referrals',      label: 'Referrals',      icon: ArrowRightLeft },
     { to: '/app/facility',       label: 'My Facility',    icon: Building2 },
     { to: '/app/transport',      label: 'Transport',      icon: Truck },
@@ -42,6 +45,8 @@ const NAV_BY_ROLE = {
     { to: '/app/dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
     { to: '/app/cases',          label: 'All Cases',      icon: ClipboardList },
     { to: '/app/patients',       label: 'Patients',       icon: UserCircle },
+    { to: '/app/households',     label: 'Households',     icon: Home },
+    { to: '/app/nutrition',      label: 'Nutrition',      icon: Baby },
     { to: '/app/referrals',      label: 'All Referrals',  icon: ArrowRightLeft },
     { to: '/app/facilities',     label: 'Facilities',     icon: Building2 },
     { to: '/app/specialists',    label: 'Specialists',    icon: Stethoscope },
@@ -52,6 +57,8 @@ const NAV_BY_ROLE = {
   patient: [
     { to: '/app/portal',                label: 'My Portal',         icon: Heart        },
     { to: '/app/portal#pregnancy',      label: 'Pregnancy Guide',   icon: Baby         },
+    { to: '/app/portal#household',      label: 'My Household',      icon: Home         },
+    { to: '/app/portal#nutrition',      label: 'Nutrition',         icon: Sparkles     },
     { to: '/app/portal#reviews',        label: 'My Reviews',        icon: Star         },
     { to: '/app/portal#oncall',         label: 'On-Call',           icon: PhoneCall    },
     { to: '/app/portal#transport',      label: 'Transport',         icon: Truck        },

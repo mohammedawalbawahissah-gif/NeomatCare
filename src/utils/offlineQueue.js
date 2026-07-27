@@ -21,6 +21,8 @@ export const QueueKinds = {
   CASE_CREATE: 'case_create',
   REFERRAL_CREATE: 'referral_create',
   ANC_VISIT_CREATE: 'anc_visit_create',
+  HOUSEHOLD_CREATE: 'household_create',
+  GROWTH_RECORD_CREATE: 'growth_record_create',
 }
 
 export const QueueKindInfo = {

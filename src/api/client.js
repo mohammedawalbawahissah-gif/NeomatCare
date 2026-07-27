@@ -163,10 +163,23 @@ export const patientsApi = {
     list:   (patientId)        => api.get(`/api/cases/patients/${patientId}/consent/`),
     record: (patientId, data)  => api.post(`/api/cases/patients/${patientId}/consent/`, data),
   },
+  growthRecords: {
+    list:   (patientId)        => api.get(`/api/cases/patients/${patientId}/growth-records/`),
+    create: (patientId, data)  => api.post(`/api/cases/patients/${patientId}/growth-records/`, data),
+  },
   portal: {
     grant:  (patientId, data)  => api.post(`/api/cases/patients/${patientId}/grant-portal/`, data),
     revoke: (patientId)        => api.post(`/api/cases/patients/${patientId}/revoke-portal/`),
   },
+}
+
+// ── Households ────────────────────────────────────────────────────────────────
+export const householdsApi = {
+  list:   (params)   => api.get('/api/cases/households/', { params }),
+  create: (data)      => api.post('/api/cases/households/', data),
+  detail: (id)         => api.get(`/api/cases/households/${id}/`),
+  update: (id, data)   => api.patch(`/api/cases/households/${id}/`, data),
+  delete: (id)          => api.delete(`/api/cases/households/${id}/`),
 }
 
 // ── Cases ─────────────────────────────────────────────────────────────────────

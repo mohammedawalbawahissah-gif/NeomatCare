@@ -30,6 +30,10 @@ import PatientPortalPage  from '@/pages/patients/PatientPortalPage'
 import PatientsPage       from '@/pages/patients/PatientsPage'
 import PatientDetailPage  from '@/pages/patients/PatientDetailPage'
 
+import HouseholdsPage      from '@/pages/households/HouseholdsPage'
+import HouseholdDetailPage from '@/pages/households/HouseholdDetailPage'
+import NutritionPage       from '@/pages/nutrition/NutritionPage'
+
 import NotFoundPage from '@/pages/NotFoundPage'
 
 // ── Guards ────────────────────────────────────────────────────────────────────
@@ -93,6 +97,21 @@ export default function App() {
             <Route element={<RequireRole allowed={['health_worker','facility_admin','superadmin']} />}>
               <Route path="patients"     element={<PatientsPage />} />
               <Route path="patients/:id" element={<PatientDetailPage />} />
+            </Route>
+
+            {/* HOUSEHOLDS — health_worker, facility_admin, superadmin (ranked view).
+                Patient portal gets its own plain member-list tab inside PatientPortalPage,
+                not this route. */}
+            <Route element={<RequireRole allowed={['health_worker','facility_admin','superadmin']} />}>
+              <Route path="households"     element={<HouseholdsPage />} />
+              <Route path="households/:id" element={<HouseholdDetailPage />} />
+            </Route>
+
+            {/* NUTRITION — health_worker (primary delivery channel), superadmin
+                (cross-facility coverage). facility_admin/specialist/driver excluded
+                per the household/nutrition tab scoping decision. */}
+            <Route element={<RequireRole allowed={['health_worker','superadmin']} />}>
+              <Route path="nutrition" element={<NutritionPage />} />
             </Route>
 
             {/* CASES — health_worker, facility_admin, superadmin */}

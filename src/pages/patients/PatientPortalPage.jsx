@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { patientApi, transportApi, wellnessApi } from '@/api/client'
+import { patientApi, transportApi, wellnessApi, householdsApi } from '@/api/client'
 import VoiceEntryBar, { VoiceEntryTrigger } from '@/components/voice/VoiceEntryBar'
 import useVoiceEntry from '@/hooks/useVoiceEntry'
 import {
   Baby, Star, PhoneCall, Truck, HeartPulse,
   ChevronDown, ChevronUp, Send, Plus, AlertTriangle,
   CheckCircle, Clock, MapPin, Calendar, Phone,
-  User, Mail, Shield, RotateCcw, Droplet, Sparkles,
+  User, Mail, Shield, RotateCcw, Droplet, Sparkles, Home,
 } from 'lucide-react'
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
@@ -880,10 +880,135 @@ function MyHealthTab() {
   )
 }
 
+// ── 7. My Household (plain member list — no risk ranking shown to a caregiver) ─
+function HouseholdTab() {
+  const [household, setHousehold] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    householdsApi.list()
+      .then(({ data }) => {
+        const list = Array.isArray(data) ? data : data.results || []
+        setHousehold(list[0] || null)
+      })
+      .catch(() => setError('Failed to load your household.'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div style={{ textAlign:'center', padding:'2rem', color:'#94a3b8', fontSize:'0.875rem' }}>Loading…</div>
+
+  if (error) {
+    return <div style={{ ...card, textAlign:'center', color:'#dc2626' }}>{error}</div>
+  }
+
+  if (!household) {
+    return (
+      <div style={{ ...card, textAlign:'center' }}>
+        <Home size={28} color="#94a3b8" style={{ marginBottom:'8px' }} />
+        <p style={{ margin:0, fontSize:'0.9rem', color:'#64748b' }}>
+          You're not linked to a household record yet. Ask your health worker to add you during your next visit.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div style={{ ...card, background:'linear-gradient(135deg,#f0fdf4,#dcfce7)', border:'1px solid #86efac' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
+          <div style={{ width:'44px', height:'44px', borderRadius:'12px', background:'#207652', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+            <Home size={20} color="white" />
+          </div>
+          <div>
+            <p style={{ margin:0, fontWeight:700, fontSize:'1rem', color:'#166534' }}>{household.head_name || 'Your household'}</p>
+            <p style={{ margin:0, fontSize:'0.8rem', color:'#15803d' }}>{household.town || 'Unknown town'}</p>
+          </div>
+        </div>
+      </div>
+
+      <div style={card}>
+        <h4 style={{ margin:'0 0 0.75rem', fontSize:'0.9rem', fontWeight:700, color:'#0f172a' }}>Household Members</h4>
+        {(household.members || []).length === 0 ? (
+          <p style={{ margin:0, fontSize:'0.85rem', color:'#94a3b8' }}>No members registered yet.</p>
+        ) : (
+          <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+            {household.members.map(m => (
+              <div key={m.id} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'8px 0', borderBottom:'1px solid #f1f5f9' }}>
+                <User size={16} color="#64748b" />
+                <div>
+                  <p style={{ margin:0, fontSize:'0.875rem', fontWeight:500, color:'#0f172a' }}>{m.patient_name}</p>
+                  <p style={{ margin:0, fontSize:'0.78rem', color:'#94a3b8', textTransform:'capitalize' }}>{m.patient_type} · Age {m.age}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── 8. Nutrition (self-serve — same household, no risk ranking) ────────────────
+function NutritionTab() {
+  const [household, setHousehold] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    householdsApi.list()
+      .then(({ data }) => {
+        const list = Array.isArray(data) ? data : data.results || []
+        setHousehold(list[0] || null)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const children = (household?.members || []).filter(m => m.patient_type === 'child')
+
+  if (loading) return <div style={{ textAlign:'center', padding:'2rem', color:'#94a3b8', fontSize:'0.875rem' }}>Loading…</div>
+
+  return (
+    <div>
+      <div style={{ ...card, background:'#fffbeb', border:'1px solid #fde68a' }}>
+        <div style={{ display:'flex', alignItems:'flex-start', gap:'10px' }}>
+          <Sparkles size={18} color="#b45309" style={{ flexShrink:0, marginTop:'2px' }} />
+          <div>
+            <p style={{ margin:0, fontWeight:600, fontSize:'0.9rem', color:'#92400e' }}>Age-appropriate feeding guidance</p>
+            <p style={{ margin:'4px 0 0', fontSize:'0.82rem', color:'#78350f' }}>
+              Coming soon — personalised guidance for your children is still being built. Your health worker can advise on feeding during your next visit.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div style={card}>
+        <h4 style={{ margin:'0 0 0.75rem', fontSize:'0.9rem', fontWeight:700, color:'#0f172a' }}>Children Under Five</h4>
+        {children.length === 0 ? (
+          <p style={{ margin:0, fontSize:'0.85rem', color:'#94a3b8' }}>
+            No children under five linked to your household yet.
+          </p>
+        ) : (
+          <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+            {children.map(c => (
+              <div key={c.id} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'8px 0', borderBottom:'1px solid #f1f5f9' }}>
+                <Baby size={16} color="#64748b" />
+                <p style={{ margin:0, fontSize:'0.875rem', fontWeight:500, color:'#0f172a' }}>{c.patient_name} · Age {c.age}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Root portal ───────────────────────────────────────────────────────────────
 const TABS = [
   { id:'pregnancy', label:'Pregnancy Tracker', icon: Baby        },
   { id:'cycle',     label:'Cycle Tracker',     icon: Droplet     },
+  { id:'household', label:'My Household',      icon: Home        },
+  { id:'nutrition', label:'Nutrition',         icon: Sparkles    },
   { id:'reviews',   label:'My Reviews',        icon: Star        },
   { id:'oncall',    label:'On-Call',           icon: PhoneCall   },
   { id:'transport', label:'Transport',         icon: Truck       },
@@ -896,6 +1021,8 @@ const TABS = [
 const TAB_COLORS = {
   pregnancy: { tint: '#dcfce7', text: '#166534', solid: '#16a34a' },
   cycle:     { tint: '#fce7f3', text: '#831843', solid: '#be185d' },
+  household: { tint: '#dcfce7', text: '#166534', solid: '#207652' },
+  nutrition: { tint: '#fef3c7', text: '#92400e', solid: '#b45309' },
   reviews:   { tint: '#fef3c7', text: '#92400e', solid: '#b45309' },
   oncall:    { tint: '#dbeafe', text: '#1e3a8a', solid: '#1d4ed8' },
   transport: { tint: '#ffedd5', text: '#9a3412', solid: '#c2410c' },
@@ -909,6 +1036,8 @@ export default function PatientPortalPage() {
   const CurrentTab = {
     pregnancy: PregnancyTab,
     cycle:     CycleTrackerTab,
+    household: HouseholdTab,
+    nutrition: NutritionTab,
     reviews:   ReviewsTab,
     oncall:    OnCallTab,
     transport: TransportTab,

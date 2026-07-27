@@ -53,6 +53,14 @@ class PatientListCreateView(APIView):
         if risk:
             qs = qs.filter(risk_level=risk)
 
+        patient_type = request.query_params.get("patient_type")
+        if patient_type:
+            qs = qs.filter(patient_type=patient_type)
+
+        household = request.query_params.get("household")
+        if household:
+            qs = qs.filter(household_id=household)
+
         return Response(PatientListSerializer(qs.order_by("-created_at"), many=True).data)
 
     def post(self, request):

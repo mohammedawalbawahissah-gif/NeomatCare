@@ -11,7 +11,7 @@ const labelStyle = { display:'block', fontSize:'0.875rem', fontWeight:500, color
 function PatientDetailsForm({ onSuccess }) {
   const [form, setForm] = useState({
     name: '', email: '', password: '', password2: '',
-    phone_number: '', otp_channel: 'sms',
+    phone_number: '', otp_channel: 'sms', wellness_type: 'maternal',
   })
   const [showPw,  setShowPw]  = useState(false)
   const [loading, setLoading] = useState(false)
@@ -31,7 +31,7 @@ function PatientDetailsForm({ onSuccess }) {
         name: form.name, email: form.email,
         password: form.password, password2: form.password2,
         role: 'patient', otp_channel: form.otp_channel,
-        phone_number: form.phone_number,
+        phone_number: form.phone_number, wellness_type: form.wellness_type,
       })
       onSuccess({ userId: data.user_id, channel: data.channel, email: form.email, phone: form.phone_number })
     } catch (err) {
@@ -56,6 +56,24 @@ function PatientDetailsForm({ onSuccess }) {
         <div style={{ position:'relative' }}>
           <User size={16} style={{ position:'absolute', left:'12px', top:'50%', transform:'translateY(-50%)', color:'#94a3b8' }} />
           <input required value={form.name} onChange={set('name')} placeholder="Your full name" style={{ ...inputStyle, paddingLeft:'38px' }} />
+        </div>
+      </div>
+
+      {/* Wellness type */}
+      <div>
+        <label style={labelStyle}>Which best describes you? <span style={{ color:'#e43418' }}>*</span></label>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
+          {[
+            { value:'maternal', label:'Pregnant / New Mother', sub:'Pregnancy tracker, household & more' },
+            { value:'wellness', label:'General Wellness',      sub:'Cycle tracking & nutrition' },
+          ].map(wt => (
+            <button key={wt.value} type="button"
+              onClick={() => setForm(p => ({ ...p, wellness_type: wt.value }))}
+              style={{ padding:'12px 8px', border:`2px solid ${form.wellness_type===wt.value?'#2f9466':'#e2e8f0'}`, borderRadius:'10px', background:form.wellness_type===wt.value?'#f0f9f4':'white', cursor:'pointer', textAlign:'center' }}>
+              <div style={{ fontWeight:600, fontSize:'0.85rem', color:form.wellness_type===wt.value?'#207652':'#374151' }}>{wt.label}</div>
+              <div style={{ fontSize:'0.7rem', color:'#94a3b8', marginTop:'2px' }}>{wt.sub}</div>
+            </button>
+          ))}
         </div>
       </div>
 

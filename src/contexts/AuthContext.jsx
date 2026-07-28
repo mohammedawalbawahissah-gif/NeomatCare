@@ -54,6 +54,10 @@ export function AuthProvider({ children }) {
     isDriver:        user?.role === 'driver',
     isSuperAdmin:    user?.role === 'superadmin',
     isPatient:       user?.role === 'patient',
+
+    // Wellness Companion subtype — only meaningful when isPatient is true.
+    isMaternal: user?.role === 'patient' && user?.wellness_type !== 'wellness',
+    isWellness: user?.role === 'patient' && user?.wellness_type === 'wellness',
   }
 
   return (

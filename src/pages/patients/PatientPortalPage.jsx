@@ -950,12 +950,47 @@ function HouseholdTab() {
 }
 
 // ── 8. Nutrition (self-serve — same household, no risk ranking) ────────────────
+function LocalFoodBlock({ tips, aiSuggestion }) {
+  if (!tips?.length) return null
+  return (
+    <div style={{ background:'#fffbeb', border:'1px solid #fde68a', borderRadius:'10px', padding:'10px 12px', marginTop:'10px' }}>
+      <p style={{ margin:'0 0 6px', fontSize:'0.8rem', fontWeight:600, color:'#92400e' }}>
+        Local foods that can help
+      </p>
+      {aiSuggestion ? (
+        <p style={{ margin:'0 0 8px', fontSize:'0.8rem', color:'#78350f', lineHeight:1.5 }}>{aiSuggestion}</p>
+      ) : null}
+      <ul style={{ margin:0, paddingLeft:'1.1rem' }}>
+        {tips.map((tip, i) => (
+          <li key={i} style={{ fontSize:'0.78rem', color:'#92400e', marginBottom:'3px' }}>{tip}</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 function NutritionTab() {
+  const { isWellness } = useAuth()
   const [household, setHousehold] = useState(null)
   const [loading, setLoading] = useState(true)
   const [guidanceByChild, setGuidanceByChild] = useState({})
+  const [pregnancyGuidance, setPregnancyGuidance] = useState(undefined)
+  const [adultGuidance, setAdultGuidance] = useState(undefined)
 
   useEffect(() => {
+    if (isWellness) {
+      wellnessApi.adultNutrition()
+        .then(({ data }) => setAdultGuidance(data))
+        .catch(() => setAdultGuidance(null))
+        .finally(() => setLoading(false))
+      return
+    }
+
+    // Maternal: pregnancy nutrition (if currently pregnant) + under-5 children
+    wellnessApi.myPregnancy()
+      .then(({ data }) => setPregnancyGuidance(data))
+      .catch(() => setPregnancyGuidance(null))
+
     householdsApi.list()
       .then(({ data }) => {
         const list = Array.isArray(data) ? data : data.results || []
@@ -970,14 +1005,62 @@ function NutritionTab() {
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }, [isWellness])
 
   const children = (household?.members || []).filter(m => m.patient_type === 'child')
 
   if (loading) return <div style={{ textAlign:'center', padding:'2rem', color:'#94a3b8', fontSize:'0.875rem' }}>Loading…</div>
 
+  // ── Wellness (non-pregnant) users ──────────────────────────────────────
+  if (isWellness) {
+    return (
+      <div>
+        <div style={card}>
+          <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'10px' }}>
+            <Sparkles size={18} color="#207652" />
+            <p style={{ margin:0, fontWeight:700, fontSize:'0.95rem', color:'#0f172a' }}>Your Nutrition Guidance</p>
+          </div>
+          {adultGuidance ? (
+            <>
+              <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:'10px', padding:'10px 12px' }}>
+                <ul style={{ margin:0, paddingLeft:'1.1rem' }}>
+                  {adultGuidance.feeding_tips.map((tip, i) => (
+                    <li key={i} style={{ fontSize:'0.78rem', color:'#166534', marginBottom:'3px' }}>{tip}</li>
+                  ))}
+                </ul>
+              </div>
+              <LocalFoodBlock tips={adultGuidance.local_food_tips} aiSuggestion={adultGuidance.local_food_ai_suggestion} />
+            </>
+          ) : (
+            <p style={{ margin:0, fontSize:'0.85rem', color:'#94a3b8' }}>No nutrition guidance available yet.</p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ── Maternal users: pregnancy nutrition + under-5 children ─────────────
   return (
     <div>
+      {pregnancyGuidance ? (
+        <div style={card}>
+          <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'10px' }}>
+            <Baby size={18} color="#207652" />
+            <p style={{ margin:0, fontWeight:700, fontSize:'0.95rem', color:'#0f172a' }}>
+              Your Pregnancy Nutrition — Week {pregnancyGuidance.current_week}
+            </p>
+          </div>
+          <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:'10px', padding:'10px 12px' }}>
+            <ul style={{ margin:0, paddingLeft:'1.1rem' }}>
+              {pregnancyGuidance.trimester_content.nutrition.map((tip, i) => (
+                <li key={i} style={{ fontSize:'0.78rem', color:'#166534', marginBottom:'3px' }}>{tip}</li>
+              ))}
+            </ul>
+          </div>
+          <LocalFoodBlock tips={pregnancyGuidance.local_food_tips} aiSuggestion={pregnancyGuidance.local_food_ai_suggestion} />
+        </div>
+      ) : null}
+
       {children.length === 0 ? (
         <div style={card}>
           <h4 style={{ margin:'0 0 0.5rem', fontSize:'0.9rem', fontWeight:700, color:'#0f172a' }}>Children Under Five</h4>
@@ -1023,6 +1106,7 @@ function NutritionTab() {
                       ))}
                     </ul>
                   </div>
+                  <LocalFoodBlock tips={g.local_food_tips} aiSuggestion={g.local_food_ai_suggestion} />
                 </>
               )}
             </div>
@@ -1045,6 +1129,13 @@ const TABS = [
   { id:'health',    label:'My Health',         icon: HeartPulse  },
 ]
 
+// A non-pregnant Wellness user only gets cycle tracking, adult nutrition
+// guidance, and paid telehealth — the rest (pregnancy tracker, household,
+// reviews, transport, my health) are Maternal-only and would be empty or
+// meaningless for her. On-Call is relabeled "Consult" for Wellness users
+// only — Maternal keeps "On-Call" as-is (explicit product decision).
+const WELLNESS_TAB_IDS = ['cycle', 'nutrition', 'oncall']
+
 // Each tab gets a color befitting its function — carried through as a
 // soft tint when inactive and a solid fill when active, so the whole
 // bar visibly shifts mood with the selected section.
@@ -1060,8 +1151,12 @@ const TAB_COLORS = {
 }
 
 export default function PatientPortalPage() {
-  const { user } = useAuth()
-  const [active, setActive] = useState('pregnancy')
+  const { user, isWellness } = useAuth()
+
+  const visibleTabs = (isWellness ? TABS.filter(t => WELLNESS_TAB_IDS.includes(t.id)) : TABS)
+    .map(t => t.id === 'oncall' && isWellness ? { ...t, label: 'Consult' } : t)
+
+  const [active, setActive] = useState(isWellness ? 'cycle' : 'pregnancy')
 
   const CurrentTab = {
     pregnancy: PregnancyTab,
@@ -1086,7 +1181,7 @@ export default function PatientPortalPage() {
 
       {/* Tab bar */}
       <div style={{ display:'flex', gap:'6px', overflowX:'auto', paddingBottom:'4px', marginBottom:'1.25rem' }}>
-        {TABS.map(({ id, label, icon: Icon }) => {
+        {visibleTabs.map(({ id, label, icon: Icon }) => {
           const c = TAB_COLORS[id]
           const isActive = active === id
           return (

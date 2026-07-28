@@ -54,6 +54,11 @@ const NAV_BY_ROLE = {
     { to: '/app/transport',      label: 'Transport',      icon: Truck },
     { to: '/app/users',          label: 'Users',          icon: Users },
   ],
+  // Note: only index 0 is actually rendered in the sidebar for role=patient
+  // (see the isPatient filter below) — the rest of this array is a leftover
+  // reference list, not live nav. The real tab visibility/gating for
+  // Maternal vs Wellness users lives in PatientPortalPage.jsx (TABS /
+  // WELLNESS_TAB_IDS), not here.
   patient: [
     { to: '/app/portal',                label: 'My Portal',         icon: Heart        },
     { to: '/app/portal#pregnancy',      label: 'Pregnancy Guide',   icon: Baby         },

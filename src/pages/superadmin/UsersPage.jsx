@@ -24,6 +24,14 @@ const ROLE_COLORS = {
   superadmin:     'bg-danger-100 text-danger-700',
 }
 
+// Display-only maps for the list/filter UI — includes patient (a portal
+// role, not a staff role admins create), so it's kept separate from
+// ROLE_LABELS/ROLE_COLORS above, which drive the "assignable role" dropdown
+// in the create/edit staff modal (patient accounts register through the
+// app, not through this form).
+const DISPLAY_ROLE_LABELS = { ...ROLE_LABELS, patient: 'Patient' }
+const DISPLAY_ROLE_COLORS = { ...ROLE_COLORS, patient: 'bg-teal-100 text-teal-700' }
+
 const FACILITY_ROLES = ['health_worker', 'facility_admin']
 
 const inp = {
@@ -401,19 +409,19 @@ export default function UsersPage() {
         </div>
         <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="input-field w-auto">
           <option value="">All Roles</option>
-          {Object.entries(ROLE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          {Object.entries(DISPLAY_ROLE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
       </div>
 
       {/* Role breakdown */}
-      <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
-        {Object.entries(ROLE_LABELS).map(([role, label]) => {
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+        {Object.entries(DISPLAY_ROLE_LABELS).map(([role, label]) => {
           const count = allUsers.filter(u => u.role === role).length
           return (
             <button key={role} onClick={() => setRoleFilter(r => r === role ? '' : role)}
               className={clsx('card px-3 py-3 text-center transition-all', roleFilter === role ? 'ring-2 ring-brand-400' : 'hover:shadow-card-hover')}>
               <p className="text-xl font-semibold text-slate-900">{count}</p>
-              <span className={clsx('inline-block text-[10px] px-1.5 py-0.5 rounded font-medium mt-1', ROLE_COLORS[role])}>{label}</span>
+              <span className={clsx('inline-block text-[10px] px-1.5 py-0.5 rounded font-medium mt-1', DISPLAY_ROLE_COLORS[role])}>{label}</span>
             </button>
           )
         })}
@@ -433,8 +441,8 @@ export default function UsersPage() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-sm font-semibold text-slate-900">{u.name}</p>
-                  <span className={clsx('text-[10px] px-1.5 py-0.5 rounded font-medium', ROLE_COLORS[u.role])}>
-                    {ROLE_LABELS[u.role] || u.role}
+                  <span className={clsx('text-[10px] px-1.5 py-0.5 rounded font-medium', DISPLAY_ROLE_COLORS[u.role])}>
+                    {DISPLAY_ROLE_LABELS[u.role] || u.role}
                   </span>
                   {!u.is_active && <span className="text-[10px] bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded">Inactive</span>}
                   {u.role !== 'patient' && u.role !== 'superadmin' && !u.is_approved && (

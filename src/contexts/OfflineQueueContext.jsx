@@ -15,6 +15,7 @@ import {
   processQueue,
   enqueueMutation,
   isNetworkError,
+  Priority,
 } from '../utils/offlineQueue'
 
 const OfflineQueueContext = createContext(null)
@@ -63,11 +64,15 @@ export function OfflineQueueProvider({ children }) {
   // browser's connection never dropped, no 'online' event will ever fire to
   // trigger a re-sync, and the item would otherwise sit queued indefinitely
   // until the person happens to switch tabs. This catches that case.
+  //
+  // HIGH-priority items (emergency case/referral) get a much shorter
+  // interval — see Priority in utils/offlineQueue.js.
   useEffect(() => {
     if (pending.length === 0) return undefined
-    const interval = setInterval(() => sync(), 45000)
+    const hasHighPriority = pending.some((i) => i.meta?.priority === Priority.HIGH)
+    const interval = setInterval(() => sync(), hasHighPriority ? 15000 : 45000)
     return () => clearInterval(interval)
-  }, [pending.length, sync])
+  }, [pending.length, pending, sync])
 
   // Tab-foreground trigger — catches connectivity that returned while the
   // tab was backgrounded/asleep and no 'online' event fired

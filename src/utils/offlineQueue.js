@@ -25,6 +25,26 @@ export const QueueKinds = {
   GROWTH_RECORD_CREATE: 'growth_record_create',
 }
 
+// Priority-tiered queue (item 5 of the offline-first work) — mirrors
+// mobile/src/utils/offlineQueue.js. HIGH-priority items (emergency case,
+// referral) drain first and retry more aggressively; web has no SMS
+// side-channel (browsers can't send SMS), but the priority ordering still
+// matters for a facility admin working from a laptop on a weak connection.
+export const Priority = { HIGH: 'high', ROUTINE: 'routine' }
+
+const KIND_PRIORITY = {
+  [QueueKinds.CASE_CREATE]: Priority.HIGH,
+  [QueueKinds.REFERRAL_CREATE]: Priority.HIGH,
+  [QueueKinds.PATIENT_CREATE]: Priority.ROUTINE,
+  [QueueKinds.ANC_VISIT_CREATE]: Priority.ROUTINE,
+  [QueueKinds.HOUSEHOLD_CREATE]: Priority.ROUTINE,
+  [QueueKinds.GROWTH_RECORD_CREATE]: Priority.ROUTINE,
+}
+
+export function getPriority(kind) {
+  return KIND_PRIORITY[kind] || Priority.ROUTINE
+}
+
 export const QueueKindInfo = {
   [QueueKinds.PATIENT_CREATE]:   { entityLabel: 'Patient',   actionLabel: 'New patient record', icon: 'UserPlus' },
   [QueueKinds.CASE_CREATE]:      { entityLabel: 'Case',      actionLabel: 'New emergency case',  icon: 'AlertCircle' },
@@ -96,7 +116,7 @@ export async function enqueueMutation({ method, url, data, meta = {} }) {
     method,
     url,
     data,
-    meta,
+    meta: { ...meta, priority: meta.priority || getPriority(meta.kind) },
     createdAt: Date.now(),
     retries: 0,
     lastError: null,
@@ -136,7 +156,11 @@ export async function processQueue({ onItemSynced, onItemFailed } = {}) {
   let failed = 0
   try {
     loadQueue()
-    const items = [...memoryQueue]
+    const items = [...memoryQueue].sort((a, b) => {
+      const pa = a.meta?.priority === Priority.HIGH ? 0 : 1
+      const pb = b.meta?.priority === Priority.HIGH ? 0 : 1
+      return pa - pb || a.createdAt - b.createdAt
+    })
     for (const item of items) {
       if (item.retries >= MAX_RETRIES) continue
 

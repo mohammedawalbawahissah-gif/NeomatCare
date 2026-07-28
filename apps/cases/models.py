@@ -239,8 +239,21 @@ class Patient(models.Model):
     def compute_risk(self):
         """
         Compute risk_level and risk_flags from clinical signals.
-        Call after each case or ANC visit is saved.
+        Call after each case, ANC visit, or growth record is saved.
+
+        Branches by patient_type — a maternal patient and a child are
+        risk-assessed on completely different clinical signals, so this
+        just dispatches to the right one and does the shared save.
         """
+        if self.patient_type == "child":
+            flags, level = self._compute_child_risk()
+        else:
+            flags, level = self._compute_maternal_risk()
+        self.risk_flags = flags
+        self.risk_level = level
+        self.save(update_fields=["risk_level", "risk_flags"])
+
+    def _compute_maternal_risk(self):
         flags = []
         if self.parity and self.parity >= 5:
             flags.append("Grand multipara (parity ≥ 5)")
@@ -259,14 +272,47 @@ class Patient(models.Model):
         if prior_high > 0:
             flags.append("Prior emergency with high-risk danger sign")
 
-        self.risk_flags = flags
         if len(flags) >= 3:
-            self.risk_level = RiskLevel.HIGH
+            level = RiskLevel.HIGH
         elif len(flags) >= 1:
-            self.risk_level = RiskLevel.MEDIUM
+            level = RiskLevel.MEDIUM
         else:
-            self.risk_level = RiskLevel.LOW
-        self.save(update_fields=["risk_level", "risk_flags"])
+            level = RiskLevel.LOW
+        return flags, level
+
+    def _compute_child_risk(self):
+        """
+        Uses the most recent GrowthRecord's WHO MUAC acute-malnutrition
+        classification (see GrowthRecord.muac_classification) — the same
+        screening tool CHPS/health workers are already trained on, applied
+        to a measurement they're already logging.
+
+        Deliberately does NOT compute a weight-for-age or height-for-age
+        classification — those require WHO growth-chart reference tables
+        that aren't loaded in this system, and fabricating a percentile
+        without them would be a real clinical claim this system can't
+        back up. MUAC is the one indicator classifiable correctly from
+        data actually on file.
+        """
+        latest = self.growth_records.order_by("-record_date").first()
+        if not latest:
+            return ["No growth records on file"], RiskLevel.LOW
+
+        classification = latest.muac_classification
+        if not classification:
+            return (
+                ["Growth record on file, but MUAC not classifiable "
+                 "(missing measurement, date of birth, or outside the 6-59 month range)"],
+                RiskLevel.LOW,
+            )
+
+        band = classification["band"]
+        note = f"{classification['label']} (MUAC {latest.muac_cm}cm on {latest.record_date})"
+        if band == "red":
+            return [note], RiskLevel.HIGH
+        if band == "yellow":
+            return [note], RiskLevel.MEDIUM
+        return [], RiskLevel.LOW
 
 
 class ANCVisit(models.Model):
@@ -312,6 +358,30 @@ class ANCVisit(models.Model):
         Patient.objects.filter(pk=self.patient_id).update(anc_visits=count)
 
 
+def classify_muac(muac_cm, age_months):
+    """
+    WHO mid-upper arm circumference (MUAC) acute-malnutrition bands —
+    the standard field-screening tool for children 6-59 months.
+    Deliberately returns None (not a guess) outside that validated age
+    range, or when either input is missing — this is a widely-used
+    screening threshold, not a diagnosis, and shouldn't be applied where
+    the standard itself doesn't claim to apply.
+
+        < 11.5 cm            → red    (Severe Acute Malnutrition)
+        11.5 cm - < 12.5 cm  → yellow (Moderate Acute Malnutrition)
+        >= 12.5 cm           → green  (Normal)
+    """
+    if muac_cm is None or age_months is None:
+        return None
+    if age_months < 6 or age_months > 59:
+        return None
+    if muac_cm < 11.5:
+        return {"band": "red", "label": "Severe Acute Malnutrition"}
+    if muac_cm < 12.5:
+        return {"band": "yellow", "label": "Moderate Acute Malnutrition"}
+    return {"band": "green", "label": "Normal"}
+
+
 class GrowthRecord(models.Model):
     """
     Individual growth-monitoring entry for a child (patient_type="child").
@@ -321,9 +391,9 @@ class GrowthRecord(models.Model):
     household's food_security_flag.
 
     Acute-malnutrition classification (WHO MUAC red/yellow/green bands)
-    is deliberately not computed here yet — logged as a roadmap item;
-    for now this just records the raw measurements and lets a worker
-    see the trend.
+    is computed on demand via the muac_classification property below,
+    and feeds Patient._compute_child_risk() — see that method for how
+    a red/yellow band maps to Patient.risk_level.
     """
     id      = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name="growth_records")
@@ -351,6 +421,24 @@ class GrowthRecord(models.Model):
 
     def __str__(self):
         return f"Growth record — {self.patient} on {self.record_date}"
+
+    @property
+    def age_months_at_record(self):
+        """Age in months AT THE TIME of this specific measurement — not
+        the child's current age. A growth log spans months/years, so
+        using today's age against an old record would misclassify it.
+        Requires date_of_birth on file; falls back to None (not the
+        coarser yearly `age` field, which can't be projected backward
+        to a past date accurately enough for a clinical band)."""
+        dob = self.patient.date_of_birth
+        if not dob:
+            return None
+        days = (self.record_date - dob).days
+        return max(0, days // 30)
+
+    @property
+    def muac_classification(self):
+        return classify_muac(self.muac_cm, self.age_months_at_record)
 
 
 class PatientConsent(models.Model):

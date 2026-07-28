@@ -341,15 +341,20 @@ class EmergencyCaseDetailSerializer(serializers.ModelSerializer):
 class GrowthRecordSerializer(serializers.ModelSerializer):
     recorded_by_name = serializers.CharField(source="recorded_by.name", read_only=True, allow_null=True)
     facility_name     = serializers.CharField(source="facility.name", read_only=True, allow_null=True)
+    muac_classification = serializers.SerializerMethodField()
 
     class Meta:
         model  = GrowthRecord
         fields = [
             "id", "record_date", "weight_kg", "muac_cm", "height_cm",
+            "muac_classification",
             "facility", "facility_name", "recorded_by", "recorded_by_name",
             "notes", "created_at",
         ]
         read_only_fields = ["id", "recorded_by", "recorded_by_name", "created_at"]
+
+    def get_muac_classification(self, obj):
+        return obj.muac_classification
 
 
 # ── Household ────────────────────────────────────────────────────────────────

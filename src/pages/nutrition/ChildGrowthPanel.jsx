@@ -118,6 +118,18 @@ export default function ChildGrowthPanel({ patient, onClose }) {
                 <div className="flex items-center gap-4 text-sm text-slate-600">
                   {r.weight_kg && <span className="flex items-center gap-1"><Scale size={13}/> {r.weight_kg} kg</span>}
                   {r.muac_cm && <span className="flex items-center gap-1"><Ruler size={13}/> MUAC {r.muac_cm} cm</span>}
+                  {r.muac_classification && (
+                    <span className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold border ${
+                      r.muac_classification.band === 'red'
+                        ? 'bg-red-100 text-red-700 border-red-200'
+                        : r.muac_classification.band === 'yellow'
+                        ? 'bg-amber-100 text-amber-700 border-amber-200'
+                        : 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                    }`}>
+                      {r.muac_classification.band === 'red' && <AlertTriangle size={11}/>}
+                      {r.muac_classification.label}
+                    </span>
+                  )}
                 </div>
               </div>
             ))}

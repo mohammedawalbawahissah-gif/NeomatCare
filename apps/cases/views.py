@@ -405,6 +405,11 @@ class PatientPortalGrantView(APIView):
             name     = patient.patient_name or "Patient",
             password = password,
             role     = "patient",
+            # Health-worker-granted portal accounts are always for an
+            # existing clinical (facility-registered) case, i.e. Maternal —
+            # but sync from the Patient record rather than hardcoding, in
+            # case it was ever set otherwise.
+            wellness_type = patient.wellness_type,
         )
         patient.patient_user = portal_user
         patient.save(update_fields=["patient_user"])

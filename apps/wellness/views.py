@@ -6,7 +6,39 @@ from apps.cases.models import Patient
 
 from .models import CycleEntry
 from .serializers import CycleEntrySerializer, SetEddSerializer
-from .services import get_child_nutrition_snapshot, get_pregnancy_snapshot, predict_next_cycle, set_self_reported_edd
+from .services import (
+    get_adult_nutrition_snapshot,
+    get_child_nutrition_snapshot,
+    get_pregnancy_snapshot,
+    predict_next_cycle,
+    set_self_reported_edd,
+)
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def _with_ai_local_food(snapshot: dict, audience: str, town: str = "") -> dict:
+    """Best-effort AI enhancement on top of a snapshot's local_food_tips —
+    never blocks or fails the response. On any error (missing API key,
+    network, rate limit, etc.) the snapshot is returned unchanged and the
+    frontend just shows the plain curated tips list, which is always
+    already present. This is what keeps the feature offline-safe/low-
+    connectivity-safe per the app's whole design posture."""
+    tips = snapshot.get("local_food_tips")
+    if not tips:
+        return snapshot
+    try:
+        from apps.ai.service import AIServiceError, local_food_suggestion
+        snapshot["local_food_ai_suggestion"] = local_food_suggestion(
+            tips, region=snapshot.get("region", ""), town=town, audience=audience,
+        )
+    except ImportError:
+        logger.warning("Could not import apps.ai.service for local_food_suggestion.")
+    except Exception:
+        logger.exception("local_food_suggestion AI enhancement failed — falling back to curated tips only.")
+    return snapshot
 
 
 class MyPregnancySnapshotView(APIView):
@@ -31,6 +63,11 @@ class MyPregnancySnapshotView(APIView):
                 {"detail": "No expected delivery date on file.", "reason": "no_edd"},
                 status=404,
             )
+        snapshot = _with_ai_local_food(
+            snapshot,
+            audience=f"a pregnant woman in week {snapshot['current_week']} ({snapshot['trimester_content']['title']})",
+            town=patient.household.town if patient.household_id else "",
+        )
         return Response(snapshot)
 
 
@@ -113,4 +150,39 @@ class ChildNutritionView(APIView):
                 {"detail": "No nutrition guidance available for this record.", "reason": reason},
                 status=404,
             )
+        snapshot = _with_ai_local_food(
+            snapshot,
+            audience=f"a child aged {snapshot['age_band']}",
+            town=patient.household.town if patient.household_id else "",
+        )
+        return Response(snapshot)
+
+
+class AdultNutritionView(APIView):
+    """GET /api/wellness/adult-nutrition/me/
+    General nutrition guidance for a Wellness-type (non-pregnant)
+    patient-role user — the adult-nutrition counterpart to
+    MyPregnancySnapshotView. Always scoped to the requesting user's own
+    linked Patient record (unlike ChildNutritionView, there's no
+    caregiver-viewing-another-record use case here)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        patient = Patient.objects.select_related("household").filter(patient_user=request.user).first()
+        if not patient:
+            return Response(
+                {"detail": "No linked patient record.", "reason": "no_patient_record"},
+                status=404,
+            )
+        snapshot = get_adult_nutrition_snapshot(patient)
+        if not snapshot:
+            return Response(
+                {"detail": "No nutrition guidance available for this record.", "reason": "not_an_adult_record"},
+                status=404,
+            )
+        snapshot = _with_ai_local_food(
+            snapshot,
+            audience="a woman tracking her general wellness and menstrual cycle",
+            town=patient.household.town if patient.household_id else "",
+        )
         return Response(snapshot)

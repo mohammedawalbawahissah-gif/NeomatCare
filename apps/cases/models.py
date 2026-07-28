@@ -71,6 +71,21 @@ class FoodSecurityStatus(models.TextChoices):
     UNKNOWN = "unknown", "Unknown"
 
 
+class Region(models.TextChoices):
+    """Northern-belt regions the app currently targets. Feeds the
+    location-aware local-food nutrition guidance (apps.wellness.content
+    LOCAL_FOOD_BY_REGION) — kept as a controlled choice list rather than
+    free-text `town` matching, since local staple availability varies by
+    region in ways a curated table needs an exact key for."""
+    NORTHERN    = "northern",     "Northern"
+    NORTH_EAST  = "north_east",   "North East"
+    SAVANNAH    = "savannah",     "Savannah"
+    UPPER_EAST  = "upper_east",   "Upper East"
+    UPPER_WEST  = "upper_west",   "Upper West"
+    OTHER       = "other",        "Other / Outside Northern Belt"
+    UNKNOWN     = "unknown",      "Unknown"
+
+
 class Household(models.Model):
     """
     A compound/household grouping for patients registered at the same
@@ -86,6 +101,10 @@ class Household(models.Model):
 
     head_name = models.CharField(max_length=200, blank=True, default="")
     town      = models.CharField(max_length=100, blank=True)
+    region    = models.CharField(
+        max_length=15, choices=Region.choices, default=Region.UNKNOWN,
+        help_text="Feeds the location-aware local-food nutrition guidance.",
+    )
     latitude  = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
 
@@ -177,6 +196,17 @@ class Patient(models.Model):
         Household, null=True, blank=True,
         on_delete=models.SET_NULL, related_name="members",
     )
+
+    # ── Wellness Companion subtype ────────────────────────────────────────
+    # Only meaningful when patient_type="maternal" AND patient_user is set
+    # (i.e. an adult woman with a portal login). Distinguishes a pregnant
+    # Maternal user (pregnancy tracker, household, transport, reviews, my
+    # health) from a non-pregnant Wellness user (cycle tracking, adult
+    # nutrition, paid "Consult" telehealth only). Mirrors
+    # accounts.User.wellness_type, set at Patient-creation time. A "child"
+    # patient_type record has no portal login and never sets this.
+    WELLNESS_TYPE_CHOICES = [("maternal", "Maternal"), ("wellness", "Wellness")]
+    wellness_type = models.CharField(max_length=10, choices=WELLNESS_TYPE_CHOICES, default="maternal")
 
     # ── Next of kin ───────────────────────────────────────────────────────
     next_of_kin_name         = models.CharField(max_length=200, blank=True)

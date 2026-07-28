@@ -27,13 +27,27 @@ generate_ai_message() — calls the existing apps.ai.service chat()
     function (role='patient') so pregnancy updates use the same
     assistant, model, and safety-tuned system prompt as the rest of
     the app, rather than a separate AI integration.
+
+get_adult_nutrition_snapshot() — general nutrition guidance for a
+    Wellness-type (non-pregnant) patient-role user. Mirrors
+    get_child_nutrition_snapshot()'s shape, including the
+    location-aware local_food_tips (see apps.wellness.content
+    get_local_food_tips / LOCAL_FOOD_BY_REGION).
+
+Pregnancy and child-nutrition snapshots now also carry local_food_tips,
+keyed off the patient's household.region, per the same non-AI curated
+table. apps.ai.service.local_food_suggestion() is an optional AI
+enhancement on top of this list, applied at the view layer with a
+fallback to the plain list if the AI call fails.
 """
 import logging
 from datetime import date, timedelta
 
 from .content import (
+    get_adult_nutrition_content,
     get_child_nutrition_content,
     get_daily_content,
+    get_local_food_tips,
     get_monthly_content,
     get_trimester_content,
     get_weekly_content,
@@ -57,6 +71,8 @@ def get_pregnancy_snapshot(patient) -> dict | None:
     current_week = max(1, min(42, (day_of_pregnancy // 7) + 1))
     current_month = max(1, min(10, (day_of_pregnancy // 28) + 1))
 
+    region = patient.household.region if patient.household_id else "unknown"
+
     return {
         "expected_delivery_date": edd,
         "days_remaining": max(days_remaining, 0),
@@ -67,6 +83,8 @@ def get_pregnancy_snapshot(patient) -> dict | None:
         "weekly_content": get_weekly_content(current_week),
         "monthly_content": get_monthly_content(current_month),
         "trimester_content": get_trimester_content(current_week),
+        "local_food_tips": get_local_food_tips(region),
+        "region": region,
     }
 
 
@@ -97,11 +115,37 @@ def get_child_nutrition_snapshot(patient) -> dict | None:
     food_security_flag = (
         patient.household.food_security_flag if patient.household_id else "unknown"
     )
+    region = patient.household.region if patient.household_id else "unknown"
     content = get_child_nutrition_content(age_months, food_security_flag)
     return {
         "patient_id": patient.id,
         "patient_name": patient.patient_name,
         **content,
+        "local_food_tips": get_local_food_tips(region),
+        "region": region,
+    }
+
+
+def get_adult_nutrition_snapshot(patient) -> dict | None:
+    """For a Wellness-type (non-pregnant) patient-role user. Returns None
+    if this isn't an adult/maternal-type record (e.g. accidentally called
+    on a child record) — patient_type='maternal' is the correct check here
+    since 'wellness_type' is a subtype of the adult record, not a separate
+    patient_type (see Patient.wellness_type docstring)."""
+    if patient.patient_type != "maternal":
+        return None
+
+    food_security_flag = (
+        patient.household.food_security_flag if patient.household_id else "unknown"
+    )
+    region = patient.household.region if patient.household_id else "unknown"
+    content = get_adult_nutrition_content(food_security_flag)
+    return {
+        "patient_id": patient.id,
+        "patient_name": patient.patient_name,
+        **content,
+        "local_food_tips": get_local_food_tips(region),
+        "region": region,
     }
 
 

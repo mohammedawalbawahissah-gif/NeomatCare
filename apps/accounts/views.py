@@ -198,7 +198,12 @@ class VerifyOTPView(APIView):
             from apps.cases.models import Patient as ClinicalPatient
             ClinicalPatient.objects.get_or_create(
                 patient_user=user,
-                defaults={'patient_name': user.name, 'patient_phone_number': user.phone_number, 'age': 0},
+                defaults={
+                    'patient_name': user.name,
+                    'patient_phone_number': user.phone_number,
+                    'age': 0,
+                    'wellness_type': user.wellness_type,
+                },
             )
 
         # Self-registered staff (health_worker, facility_admin, specialist,

@@ -10,6 +10,8 @@ Wraps the Anthropic API and provides typed helpers for each AI capability:
   4. referral_handover    — draft a specialist clinical handover brief
   5. transport_recommend  — recommend optimal vehicle given case urgency + travel time
   6. chat                 — role-aware conversational assistant
+  7. local_food_suggestion — turn the curated local-food table into a
+                              personalised, locally-worded nutrition tip
 
 All functions are synchronous (Django-friendly). Each raises AIServiceError on failure.
 """
@@ -364,3 +366,48 @@ def chat(messages: list, role: str = "health_worker", context: dict = None) -> s
     except anthropic.APIError as exc:
         logger.error("Chat API error: %s", exc)
         raise AIServiceError(str(exc)) from exc
+
+
+# ── 7. Local Food Suggestion (enhancement layer) ────────────────────────────
+#
+# This is an ENHANCEMENT on top of apps.wellness.content.get_local_food_tips()
+# (the non-AI curated table), not a replacement — callers always have that
+# table as a working fallback if this raises AIServiceError or the API is
+# unreachable, so the feature still works offline. See the AI-enhancement
+# helper in apps/wellness/views.py for how the fallback is applied.
+
+LOCAL_FOOD_SYSTEM = """You are a nutrition assistant for a maternal and child health app used in \
+Northern Ghana. You turn a short list of already-vetted, locally available foods into ONE brief, \
+warm, practically-worded suggestion for a specific person.
+
+Rules:
+- Use ONLY the foods given to you. Never invent foods, prices, or nutrients not in the list.
+- Keep it to 2-3 sentences, plain everyday language, no medical jargon.
+- Mention the person's town/region by name if given, to make it feel local and specific.
+- Do not diagnose or give medical advice — this is food guidance only.
+- Return plain text only, no markdown, no preamble."""
+
+
+def local_food_suggestion(curated_tips: list, region: str = "", town: str = "", audience: str = "a pregnant woman") -> str:
+    """
+    curated_tips: output of apps.wellness.content.get_local_food_tips() —
+        the vetted list this call is allowed to draw from.
+    audience: short phrase describing who this is for, e.g. "a pregnant
+        woman in her second trimester", "a child aged 8 months",
+        "a woman tracking her menstrual cycle".
+
+    Raises AIServiceError on failure — callers should catch this and fall
+    back to curated_tips directly (joined into a sentence), never let a
+    failed AI call block the nutrition guidance from showing at all.
+    """
+    if not curated_tips:
+        raise AIServiceError("No curated tips provided to enhance.")
+
+    location = f"{town}, {region}" if town and region else (region or town or "Northern Ghana")
+    prompt = (
+        f"Person: {audience}, located in {location}.\n"
+        f"Vetted local foods available to them:\n"
+        + "\n".join(f"- {t}" for t in curated_tips)
+        + "\n\nWrite the suggestion now."
+    )
+    return _call(LOCAL_FOOD_SYSTEM, prompt, max_tokens=200).strip()

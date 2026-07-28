@@ -272,3 +272,96 @@ def get_child_nutrition_content(age_months: int, food_security_flag: str = "unkn
         "food_security_flag": food_security_flag,
         "guidance_scope": "resource_limited" if use_resource_limited else "standard",
     }
+
+
+# ── Adult (Wellness Companion, non-pregnant) nutrition guidance ────────────
+#
+# General women's-health nutrition education — not pregnancy-specific, not
+# under-5. Same food_secure/resource_limited split as the child content
+# above, for the same reason (this app's users in the target region are
+# mostly poor, per the hack brief).
+ADULT_NUTRITION = {
+    "food_secure_tips": [
+        "Aim for a varied plate daily — grains, legumes, vegetables, fruit, and a protein source.",
+        "Include iron-rich foods (dark leafy greens, beans, lean meat) — especially important during menstruation.",
+        "Stay hydrated — aim for 8-10 glasses of water daily.",
+        "Limit heavily processed and sugary foods where possible.",
+    ],
+    "resource_limited_tips": [
+        "Beans, groundnuts, and soya are affordable, protein-rich staples that also help replace iron lost during your period.",
+        "Dark leafy greens (moringa, kontomire/cocoyam leaves) added to soups or stews are a low-cost source of iron and vitamins.",
+        "Whole grains (millet, sorghum, brown rice) over refined ones stretch a food budget further while adding more nutrients.",
+        "Even a small amount of added groundnut paste or oil increases the energy density of a light meal.",
+    ],
+}
+
+
+def get_adult_nutrition_content(food_security_flag: str = "unknown") -> dict:
+    """food_security_flag: one of Household.FoodSecurityStatus values, same
+    convention as get_child_nutrition_content."""
+    use_resource_limited = food_security_flag in ("at_risk", "insecure")
+    return {
+        "feeding_tips": ADULT_NUTRITION["resource_limited_tips"] if use_resource_limited else ADULT_NUTRITION["food_secure_tips"],
+        "food_security_flag": food_security_flag,
+        "guidance_scope": "resource_limited" if use_resource_limited else "standard",
+    }
+
+
+# ── Location-aware local-food guidance (non-AI layer) ──────────────────────
+#
+# Curated, deterministic, zero-cost, offline-safe table of low-cost foods
+# locally available in each northern-belt region — this is what makes
+# nutrition guidance "local" per the hack brief. Selected by
+# apps.cases.models.Household.region. This is the fallback that always
+# works even with zero connectivity; apps.ai.service.local_food_suggestion()
+# is an optional enhancement layer on top of it (see get_local_food_tips
+# below and the AI-enhancement helper in views.py).
+LOCAL_FOOD_BY_REGION = {
+    "northern": [
+        "Groundnuts and groundnut paste — widely grown, cheap protein and fat.",
+        "Moringa leaves (dried or fresh) — very affordable and rich in iron and vitamins, common around Tamale.",
+        "Guinea corn (sorghum) and millet — cheaper staple grains than imported rice.",
+        "Cowpeas (beans) — a low-cost protein source, often cheaper than meat.",
+        "Shea butter — locally produced, useful as a low-cost cooking fat.",
+    ],
+    "north_east": [
+        "Millet and sorghum — dominant, affordable local staples.",
+        "Bambara beans (groundnut-like legume) — a cheap, protein-dense local crop.",
+        "Dawadawa (fermented locust bean) — a low-cost, protein-rich flavouring used in local soups.",
+        "Dried baobab leaves — an inexpensive, nutrient-dense leafy vegetable.",
+    ],
+    "savannah": [
+        "Yams — a major, affordable local staple crop in this region.",
+        "Groundnuts — cheap, widely grown protein source.",
+        "Cowpeas (beans) — low-cost protein, often grown locally.",
+        "Shea nuts/butter — local, affordable cooking fat.",
+    ],
+    "upper_east": [
+        "Millet — the dominant, cheapest local staple grain.",
+        "Groundnuts — affordable, widely available protein.",
+        "Bambara beans — a low-cost, protein-rich local legume.",
+        "Dawadawa (fermented locust bean) — inexpensive local seasoning with added protein.",
+    ],
+    "upper_west": [
+        "Guinea corn (sorghum) and millet — cheap local staple grains.",
+        "Groundnuts — affordable local protein source.",
+        "Bambara beans — low-cost protein-rich legume grown locally.",
+        "Baobab and moringa leaves — inexpensive, nutrient-dense local greens.",
+    ],
+    # Used for 'other' and 'unknown' — general Ghanaian low-cost staples
+    # rather than region-specific ones, so the feature degrades gracefully
+    # instead of showing nothing when a household's region isn't set.
+    "default": [
+        "Beans, groundnuts, or soya — affordable, widely available protein sources across Ghana.",
+        "Dark leafy greens (kontomire, moringa, or similar local greens) — a low-cost source of iron and vitamins.",
+        "Local whole grains (millet, sorghum, brown rice) — generally cheaper than imported refined alternatives.",
+        "Eggs, when available — an affordable, complete source of protein.",
+    ],
+}
+
+
+def get_local_food_tips(region: str = "unknown") -> list[str]:
+    """Non-AI layer — deterministic, offline-safe. Always returns
+    something (falls back to LOCAL_FOOD_BY_REGION['default'] for an
+    unrecognised or unset region) rather than an empty list."""
+    return LOCAL_FOOD_BY_REGION.get(region, LOCAL_FOOD_BY_REGION["default"])

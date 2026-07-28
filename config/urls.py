@@ -30,4 +30,9 @@ urlpatterns = [
     path("api/notifications/", include("apps.notifications.urls")),
     path("api/wellness/",      include("apps.wellness.urls")),
     path("api/voice/",         include("apps.voice.urls")),
+    # Africa's Talking USSD callback — see ussd_service.py for why this is
+    # a plain Django view (not DRF) with no auth: AT calls it directly as
+    # a webhook, and the health-worker phone-number lookup happens inside
+    # the handler itself.
+    path("ussd/",              include("apps.referrals.ussd_urls")),
 ]

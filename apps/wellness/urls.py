@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    AdultNutritionView,
     ChildNutritionView,
     CycleEntryListCreateView,
     CyclePredictionView,
@@ -14,4 +15,5 @@ urlpatterns = [
     path("cycle/", CycleEntryListCreateView.as_view()),
     path("cycle/prediction/", CyclePredictionView.as_view()),
     path("child-nutrition/<uuid:patient_id>/", ChildNutritionView.as_view()),
+    path("adult-nutrition/me/", AdultNutritionView.as_view()),
 ]

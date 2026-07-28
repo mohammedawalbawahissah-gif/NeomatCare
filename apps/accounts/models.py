@@ -31,11 +31,28 @@ class User(AbstractBaseUser, PermissionsMixin):
         DRIVER       = "driver",         "Driver"
         PATIENT      = "patient",        "Health Companion"
 
+    class WellnessType(models.TextChoices):
+        MATERNAL = "maternal", "Maternal"
+        WELLNESS = "wellness", "Wellness"
+
     id       = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name     = models.CharField(max_length=255)
     email    = models.EmailField(unique=True)
     phone_number = models.CharField(max_length=20, blank=True, default="")
     role     = models.CharField(max_length=20, choices=Role.choices, default=Role.HEALTHWORKER)
+    # Only meaningful for role=patient (the "Health Companion" role, i.e. the
+    # Wellness Companion app). Distinguishes a pregnant/maternal user (full
+    # pregnancy tracker, household, transport, reviews, my health) from a
+    # non-pregnant wellness user (cycle tracking, adult nutrition, paid
+    # telehealth consult only). Defaults to maternal to match every existing
+    # patient-role account, which predates this split. Denormalized onto
+    # apps.cases.models.Patient.wellness_type at Patient-creation time
+    # (VerifyOTPView / PatientPortalGrantView) since most feature-gating
+    # logic (nutrition, tab access) works off the clinical Patient record,
+    # not User directly.
+    wellness_type = models.CharField(
+        max_length=20, choices=WellnessType.choices, default=WellnessType.MATERNAL,
+    )
     facility = models.ForeignKey(
         "facilities.HealthFacility",
         null=True, blank=True,

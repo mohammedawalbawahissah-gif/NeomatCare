@@ -28,6 +28,10 @@ class FacilityListSerializer(serializers.ModelSerializer):
             "theatre_available", "blood_bank",
             "icu_beds_available", "nicu_cots_available",
             "on_call_specialist", "is_active",
+            # Needed by the mobile app's offline SMS-referral side-channel
+            # (see utils/smsReferralFallback.js) — the app has no other way
+            # to know which number to text when it can't reach the API.
+            "phone",
         ]
 
 

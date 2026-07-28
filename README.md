@@ -361,6 +361,12 @@ Patient registration, case creation, referral creation, and ANC visit logging go
 - Scope is deliberately narrower than "everything": AI features, voice transcription, and file/photo uploads currently require a live connection and are not queued — see [Roadmap](#-roadmap).
 - Read data (facility lists, patient lookups) is cached so a worker can look something up even without a fresh connection, distinct from the write queue above.
 
+**The write-queue only solves *sync* — it doesn't solve *reachability*.** In parts of the northern belt, a CHPS compound can go days without mobile data even where basic voice/SMS signal is fine, since SMS rides the much lower-bandwidth GSM control channel, not the data network. A referral sitting in a sync queue waiting for data defeats the purpose for an emergency. Three things address that directly:
+
+- **Priority-tiered queue** — every queued write is tagged `HIGH` (emergency case, referral) or `ROUTINE` (everything else). `HIGH` items drain first when connectivity returns and retry every 15s instead of 45s (`utils/offlineQueue.js` on both web and mobile — see `Priority`/`getPriority`).
+- **SMS-triggered emergency referral side-channel** (mobile) — the moment a referral write gets queued offline, the app opens the phone's native SMS composer, pre-filled and addressed to the receiving facility, over the phone's own SMS radio rather than the data connection that just failed (`mobile/src/utils/smsReferralFallback.js`). This complements, not replaces, the existing Africa's Talking SMS notifications in `sms_service.py`, which fire once a referral reaches the server — the composer covers the gap before that. The AI facility-suggestion step also now falls back to the last-cached facility list for manual selection when it can't reach the server, instead of hanging indefinitely (`ReferralPanel` in `CaseCreateScreen.jsx`).
+- **USSD referral initiation** — a `*XXX#` menu (`ussd_service.py` + `apps/referrals/ussd_views.py`, Africa's Talking USSD callback) a health worker can dial from *any* phone, smartphone or not, to trigger a minimal emergency referral (age + one danger sign) with a few keypresses — zero app, zero data connectivity required at all. The referral is auto-routed by the same `referral_engine.py` scoring the app uses, then immediately moved to `PENDING`, which triggers the existing SMS notification signal to the receiving facility. The health worker fills in full case details via the app once connectivity returns.
+
 ---
 
 ## 👥 User Roles
@@ -431,14 +437,18 @@ Patient data is isolated in a separate model — analytics queries never need to
 
 Ordered by how directly each closes the remaining gap with the hackathon brief:
 
-- [ ] **Household-level view** — group patients/children by household or caregiver so a CHPS worker can prioritize an entire compound in one pass, not one patient record at a time
 - [ ] **Under-five illness detection and referral** — extend danger-sign detection past the current neonatal window into general under-five illness (malaria, diarrhoea, pneumonia) per IMCI guidance
-- [ ] **Under-five nutrition and growth monitoring** — MUAC/weight-for-age tracking and household food-security flags, extending the existing content engine past pregnancy-only guidance
-- [ ] **SMS/USSD fallback workflow** for feature phones, for settings below even a low-end smartphone
+- [x] ~~**SMS/USSD fallback workflow** for feature phones, for settings below even a low-end smartphone~~ — done: SMS emergency-referral side-channel (mobile) + USSD referral initiation (`ussd_service.py`), see [Offline-First Design](#-offline-first-design)
 - [ ] **Offline support for AI and voice** — these currently require connectivity, since they call out to Claude/Khaya/Google
 - [ ] Ministry of Health analytics dashboard
 - [ ] Predictive ML layer trained on Ghanaian outcome data, complementing the current rule-based engine
 - [ ] Multi-country rule-set support
+
+**Offline-first, medium/long-term (beyond what's buildable before Aug 11):**
+- [ ] **Store-and-forward via "connectivity mules"** — a health worker who periodically travels into signal range syncs their phone's queued data over local Bluetooth/Wi-Fi Direct to another device that already has (or will soon reach) connectivity — the classic pattern from CommCare/OpenSRP-style rural health systems. No new infrastructure, just a sync-handoff feature.
+- [ ] **Facility-level local hub** — a small local server (e.g. a Raspberry Pi) at a CHPS compound that phones sync to over local Wi-Fi regardless of internet; the hub syncs to the cloud whenever it gets connectivity, even just once a day via someone's trip into town. Decouples day-to-day facility workflow entirely from real-time internet.
+- [ ] **Two-way IVR** — lets a receiving specialist call in and respond to a referral via voice prompts, so referral status can flow back without data either.
+- [ ] **LoRa/radio mesh between health posts** — real infrastructure investment, common in similarly disconnected regions; the furthest-out option, noted for completeness rather than near-term feasibility.
 
 **Tech debt (no live security exposure, scheduled rather than urgent):**
 - [ ] **Migrate mobile dictation off `@react-native-voice/voice` to `expo-speech-recognition`** — the former is unmaintained upstream (confirmed via `npm install` deprecation warning) and pulls in most of the mobile app's `npm audit` findings through its Expo config plugin (contained to native-project generation at `expo prebuild` time, not the runtime JS bundle — no user-facing exposure). Low urgency today; rising risk on the next Expo SDK bump, since an abandoned native module is a common source of silent breakage on upgrade. Touches 2 files (`useWebRTCCall.js`, `services/voice.js`) feeding 5 consumers (`AssistantWidget`, `VoiceLanguagePicker`, `ReadAloudBar`, `useVoiceEntry`, `useReadAloud`) — needs on-device testing across all of them, can't be verified from a sandbox without a microphone.

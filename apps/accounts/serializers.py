@@ -37,12 +37,18 @@ class RegisterSerializer(serializers.ModelSerializer):
     otp_channel    = serializers.ChoiceField(
         choices=['sms', 'email'], required=False, default='sms'
     )
+    # Only used for role='patient' — which Wellness Companion experience the
+    # user gets (see User.WellnessType). Ignored for every other role.
+    wellness_type  = serializers.ChoiceField(
+        choices=['maternal', 'wellness'], required=False, default='maternal'
+    )
 
     class Meta:
         model  = User
         fields = [
             'name', 'email', 'password', 'password2', 'role',
             'facility', 'phone_number', 'license_number', 'otp_channel',
+            'wellness_type',
         ]
         extra_kwargs = {'role': {'required': False}}
 
@@ -60,6 +66,12 @@ class RegisterSerializer(serializers.ModelSerializer):
         role    = attrs.get('role', 'health_worker')
         channel = attrs.get('otp_channel', 'sms')
         facility = attrs.get('facility')
+
+        # wellness_type only makes sense for patients — drop it silently for
+        # every other role rather than erroring, since the frontend forms
+        # for staff roles won't send it at all.
+        if role != 'patient':
+            attrs.pop('wellness_type', None)
 
         if role in FACILITY_REQUIRED_ROLES and not facility:
             raise serializers.ValidationError({
@@ -134,7 +146,7 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model  = User
         fields = [
-            'id', 'name', 'email', 'phone_number', 'role',
+            'id', 'name', 'email', 'phone_number', 'role', 'wellness_type',
             'facility_id', 'facility_name', 'is_active', 'is_verified',
             'is_approved', 'created_at',
         ]
@@ -148,6 +160,10 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token['name']        = user.name
         token['role']        = user.role
         token['facility_id'] = str(user.facility_id) if user.facility_id else None
+        # Only meaningful when role == 'patient', but harmless to include
+        # for every role — lets the frontend gate the Wellness Companion
+        # nav right on login instead of waiting for a /me/ round trip.
+        token['wellness_type'] = user.wellness_type
         return token
 
     def validate(self, attrs):

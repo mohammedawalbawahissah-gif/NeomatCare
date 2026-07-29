@@ -27,9 +27,10 @@ export const QueueKinds = {
 
 // Priority-tiered queue (item 5 of the offline-first work) — mirrors
 // mobile/src/utils/offlineQueue.js. HIGH-priority items (emergency case,
-// referral) drain first and retry more aggressively; web has no SMS
-// side-channel (browsers can't send SMS), but the priority ordering still
-// matters for a facility admin working from a laptop on a weak connection.
+// referral) drain first and retry more aggressively. Browsers on a mobile
+// device DO support opening the native SMS composer via an sms: link
+// (see SmsFallbackButton.jsx) — desktop browsers don't, so that component
+// falls back to copy-to-clipboard instructions there instead.
 export const Priority = { HIGH: 'high', ROUTINE: 'routine' }
 
 const KIND_PRIORITY = {
@@ -54,6 +55,17 @@ export const QueueKindInfo = {
 
 export function isQueueItemFailed(item) {
   return item.retries >= MAX_RETRIES
+}
+
+// A HIGH-priority item that's failed more than once — the priority
+// ordering and faster retry cadence alone probably aren't going to save
+// it if the device genuinely has no signal, not just a flaky connection.
+// Callers use this to offer an SMS-composer fallback instead of just
+// waiting (see SmsFallbackButton.jsx — works on a mobile browser via the
+// sms: URI scheme; there's no equivalent on desktop, where the UI falls
+// back to copy-to-clipboard instructions instead).
+export function isStuckCritical(item) {
+  return item.meta?.priority === Priority.HIGH && item.retries >= 2
 }
 
 let memoryQueue = null

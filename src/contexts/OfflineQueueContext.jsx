@@ -15,6 +15,7 @@ import {
   processQueue,
   enqueueMutation,
   isNetworkError,
+  isStuckCritical,
   Priority,
 } from '../utils/offlineQueue'
 
@@ -101,7 +102,11 @@ export function OfflineQueueProvider({ children }) {
     }
   }, [])
 
-  const value = { pending, pendingCount: pending.length, isOnline, syncing, syncVersion, sync, submitOrQueue }
+  const stuckCriticalItem = pending.find(isStuckCritical)
+  const value = {
+    pending, pendingCount: pending.length, isOnline, syncing, syncVersion, sync, submitOrQueue,
+    hasStuckCritical: !!stuckCriticalItem, stuckCriticalItem,
+  }
 
   return (
     <OfflineQueueContext.Provider value={value}>

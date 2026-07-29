@@ -315,6 +315,7 @@ export default function UsersPage() {
   const [error, setError]           = useState('')
   const [search, setSearch]         = useState('')
   const [roleFilter, setRoleFilter] = useState('')
+  const [wellnessTypeFilter, setWellnessTypeFilter] = useState('')
 
   const [createModal, setCreateModal] = useState(false)
   const [editUser, setEditUser]       = useState(null)
@@ -407,21 +408,40 @@ export default function UsersPage() {
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input value={search} onChange={e => setSearch(e.target.value)} className="input-field pl-9" placeholder="Search by name or email..." />
         </div>
-        <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="input-field w-auto">
+        <select value={roleFilter} onChange={e => { setRoleFilter(e.target.value); setWellnessTypeFilter('') }} className="input-field w-auto">
           <option value="">All Roles</option>
           {Object.entries(DISPLAY_ROLE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
       </div>
 
-      {/* Role breakdown */}
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-        {Object.entries(DISPLAY_ROLE_LABELS).map(([role, label]) => {
+      {/* Role breakdown — Patient is split into Maternal/Wellness sub-cards
+          since those are two functionally different user types now (see
+          the Wellness Companion split); everything else stays one card
+          per role as before. */}
+      <div className="grid grid-cols-3 sm:grid-cols-7 gap-3">
+        {Object.entries(DISPLAY_ROLE_LABELS).filter(([role]) => role !== 'patient').map(([role, label]) => {
           const count = allUsers.filter(u => u.role === role).length
           return (
-            <button key={role} onClick={() => setRoleFilter(r => r === role ? '' : role)}
+            <button key={role} onClick={() => { setRoleFilter(r => r === role ? '' : role); setWellnessTypeFilter('') }}
               className={clsx('card px-3 py-3 text-center transition-all', roleFilter === role ? 'ring-2 ring-brand-400' : 'hover:shadow-card-hover')}>
               <p className="text-xl font-semibold text-slate-900">{count}</p>
               <span className={clsx('inline-block text-[10px] px-1.5 py-0.5 rounded font-medium mt-1', DISPLAY_ROLE_COLORS[role])}>{label}</span>
+            </button>
+          )
+        })}
+        {[
+          { key: 'maternal', label: 'Maternal', className: 'bg-pink-50 text-pink-700' },
+          { key: 'wellness', label: 'Wellness', className: 'bg-amber-50 text-amber-700' },
+        ].map(({ key, label, className }) => {
+          const count = allUsers.filter(u => u.role === 'patient' && (u.wellness_type === 'wellness') === (key === 'wellness')).length
+          const active = roleFilter === 'patient' && wellnessTypeFilter === key
+          return (
+            <button key={key} onClick={() => {
+              if (active) { setRoleFilter(''); setWellnessTypeFilter('') }
+              else { setRoleFilter('patient'); setWellnessTypeFilter(key) }
+            }} className={clsx('card px-3 py-3 text-center transition-all', active ? 'ring-2 ring-brand-400' : 'hover:shadow-card-hover')}>
+              <p className="text-xl font-semibold text-slate-900">{count}</p>
+              <span className={clsx('inline-block text-[10px] px-1.5 py-0.5 rounded font-medium mt-1', className)}>{label}</span>
             </button>
           )
         })}
@@ -433,7 +453,10 @@ export default function UsersPage() {
         <EmptyState icon={Users} title="No users found" description="Try adjusting your search or filters" />
       ) : (
         <div className="card divide-y divide-slate-50">
-          {users.map(u => (
+          {users
+            .filter(u => !(wellnessTypeFilter && roleFilter === 'patient') ||
+              (u.wellness_type === 'wellness') === (wellnessTypeFilter === 'wellness'))
+            .map(u => (
             <div key={u.id} className="flex items-center gap-4 px-5 py-4">
               <div className="w-10 h-10 bg-brand-600 rounded-xl flex items-center justify-center text-white font-semibold shrink-0">
                 {u.name?.[0]?.toUpperCase() || 'U'}
@@ -444,6 +467,12 @@ export default function UsersPage() {
                   <span className={clsx('text-[10px] px-1.5 py-0.5 rounded font-medium', DISPLAY_ROLE_COLORS[u.role])}>
                     {DISPLAY_ROLE_LABELS[u.role] || u.role}
                   </span>
+                  {u.role === 'patient' && (
+                    <span className={clsx('text-[10px] px-1.5 py-0.5 rounded font-medium',
+                      u.wellness_type === 'wellness' ? 'bg-amber-50 text-amber-700' : 'bg-pink-50 text-pink-700')}>
+                      {u.wellness_type === 'wellness' ? 'Wellness' : 'Maternal'}
+                    </span>
+                  )}
                   {!u.is_active && <span className="text-[10px] bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded">Inactive</span>}
                   {u.role !== 'patient' && u.role !== 'superadmin' && !u.is_approved && (
                     <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">Pending Approval</span>

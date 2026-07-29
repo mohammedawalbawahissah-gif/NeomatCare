@@ -15,6 +15,7 @@ import { RefreshCw, CloudOff, Trash2, UserPlus, ArrowLeftRight, Stethoscope, Fil
 import clsx from 'clsx'
 import { useOfflineQueue } from '../../contexts/OfflineQueueContext'
 import { QueueKindInfo, MAX_RETRIES, isQueueItemFailed, removeFromQueue } from '../../utils/offlineQueue'
+import SmsFallbackButton from './SmsFallbackButton'
 
 const ICONS = { UserPlus, ArrowLeftRight, Stethoscope, FileText, AlertCircle }
 
@@ -60,7 +61,7 @@ function QueueRow({ item, onDiscard }) {
 }
 
 export default function SyncQueueIndicator() {
-  const { pending, isOnline, syncing, sync } = useOfflineQueue()
+  const { pending, isOnline, syncing, sync, hasStuckCritical, stuckCriticalItem } = useOfflineQueue()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -115,6 +116,7 @@ export default function SyncQueueIndicator() {
           </div>
 
           <div className="overflow-y-auto">
+            {hasStuckCritical && stuckCriticalItem && <SmsFallbackButton item={stuckCriticalItem} />}
             {count === 0 && (
               <p className="px-4 py-6 text-sm text-slate-400 text-center">Nothing queued — every record has reached the server.</p>
             )}

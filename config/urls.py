@@ -35,4 +35,7 @@ urlpatterns = [
     # a webhook, and the health-worker phone-number lookup happens inside
     # the handler itself.
     path("ussd/",              include("apps.referrals.ussd_urls")),
+    # Africa's Talking inbound-SMS callback — see sms_inbound_service.py.
+    # Same no-DRF/no-auth shape as the USSD callback above, same reason.
+    path("sms/inbound/",       include("apps.referrals.sms_inbound_urls")),
 ]

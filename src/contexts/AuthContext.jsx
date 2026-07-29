@@ -147,6 +147,9 @@ export const AuthProvider = ({ children }) => {
   const isDriver         = userRole === 'driver';
   const isSuperadmin     = userRole === 'superadmin';
   const isPatient        = userRole === 'patient';
+  // Wellness Companion subtype — only meaningful when isPatient is true.
+  const isMaternal        = isPatient && user?.wellness_type !== 'wellness';
+  const isWellness         = isPatient && user?.wellness_type === 'wellness';
 
   return (
     <AuthContext.Provider
@@ -166,6 +169,8 @@ export const AuthProvider = ({ children }) => {
         isSuperadmin,
         isSuperAdmin: isSuperadmin,
         isPatient,
+        isMaternal,
+        isWellness,
         login,
         register,
         verifyOtp,

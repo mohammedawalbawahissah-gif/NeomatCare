@@ -167,6 +167,8 @@ export const wellnessApi = {
   listCycleEntries: ()     => apiClient.get('/api/wellness/cycle/'),
   addCycleEntry:    (data) => apiClient.post('/api/wellness/cycle/', data),
   cyclePrediction:  ()     => apiClient.get('/api/wellness/cycle/prediction/'),
+  childNutrition:   (patientId) => apiClient.get(`/api/wellness/child-nutrition/${patientId}/`),
+  adultNutrition:   ()     => apiClient.get('/api/wellness/adult-nutrition/me/'),
 };
 
 // ─── Notifications ─────────────────────────────────────────────────────────────
@@ -196,10 +198,23 @@ export const patientsApi = {
     list:   (patientId)       => apiClient.get(`/api/cases/patients/${patientId}/consent/`),
     record: (patientId, data) => apiClient.post(`/api/cases/patients/${patientId}/consent/`, data),
   },
+  growthRecords: {
+    list:   (patientId)       => apiClient.get(`/api/cases/patients/${patientId}/growth-records/`),
+    create: (patientId, data) => apiClient.post(`/api/cases/patients/${patientId}/growth-records/`, data),
+  },
   portal: {
     grant:  (patientId, data) => apiClient.post(`/api/cases/patients/${patientId}/grant-portal/`, data),
     revoke: (patientId)       => apiClient.post(`/api/cases/patients/${patientId}/revoke-portal/`),
   },
+};
+
+// ─── Households ──────────────────────────────────────────────────────────────
+export const householdsApi = {
+  list:   (params)   => apiClient.get('/api/cases/households/', { params }),
+  create: (data)      => apiClient.post('/api/cases/households/', data),
+  detail: (id)         => apiClient.get(`/api/cases/households/${id}/`),
+  update: (id, data)   => apiClient.patch(`/api/cases/households/${id}/`, data),
+  delete: (id)          => apiClient.delete(`/api/cases/households/${id}/`),
 };
 
 // ─── Cases (EmergencyCase) ─────────────────────────────────────────────────────

@@ -116,7 +116,7 @@ export default function CasesScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + Spacing[5] }]}>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[16] }]}>
         <View>
           <Text style={styles.headerTitle}>Emergency Cases</Text>
           <Text style={styles.headerSub}>{cases.length} case{cases.length !== 1 ? 's' : ''}</Text>

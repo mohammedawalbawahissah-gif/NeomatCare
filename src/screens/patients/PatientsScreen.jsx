@@ -133,7 +133,7 @@ export default function PatientsScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + Spacing[5] }]}>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[16] }]}>
         <Text style={styles.headerTitle}>Patients</Text>
         {canCreate && (
           <TouchableOpacity style={styles.addBtn} onPress={() => navigation.navigate('PatientCreate')}>

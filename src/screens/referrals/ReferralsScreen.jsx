@@ -64,7 +64,7 @@ export default function ReferralsScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + Spacing[5] }]}>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[16] }]}>
         <Text style={styles.headerTitle}>Referrals</Text>
         <Text style={styles.headerSub}>{referrals.length} referral{referrals.length !== 1 ? 's' : ''}</Text>
       </View>

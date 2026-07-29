@@ -71,7 +71,7 @@ export default function SpecialistsScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + Spacing[5] }]}>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[16] }]}>
         <View>
           <Text style={styles.headerTitle}>Specialists</Text>
           <Text style={styles.headerSub}>{specialists.length} registered · {specialists.filter((s) => s.is_available).length} available</Text>

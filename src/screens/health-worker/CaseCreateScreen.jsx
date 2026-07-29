@@ -6,9 +6,10 @@ import {
   casesApi, facilitiesApi, patientsApi, referralsApi, transportApi, consultationsApi, getErrorMessage,
 } from '../../api/client';
 import { useOfflineQueue } from '../../contexts/OfflineQueueContext';
-import { QueueKinds } from '../../utils/offlineQueue';
+import { QueueKinds, isNetworkError } from '../../utils/offlineQueue';
 import { generateIdempotencyKey } from '../../utils/idempotencyKey';
 import { cachedFetch } from '../../utils/cachedFetch';
+import { triggerAutoReferralSms } from '../../utils/smsReferralFallback';
 import { Input, Select, Button, ErrorBanner, Spinner, Badge } from '../../components/ui';
 import { DangerSignPicker } from '../../components/ui/dangerSigns';
 import VoiceEntryBar, { VoiceEntryTrigger } from '../../components/voice/VoiceEntryBar';
@@ -62,7 +63,7 @@ export default function CaseCreateScreen({ navigation, route }) {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + Spacing[5] }]}>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[16] }]}>
         <TouchableOpacity onPress={handleClose} style={styles.backBtn}>
           <Ionicons name={step === 2 ? 'close' : 'arrow-back'} size={22} color={Colors.textPrimary} />
         </TouchableOpacity>
@@ -405,6 +406,13 @@ function ReferralPanel({ caseData, onDone }) {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  // Set when the AI suggestion call itself couldn't reach the server —
+  // switches the panel from "ranked AI suggestions" to "pick manually from
+  // the last-cached facility list", since there's no engine to rank with.
+  const [offlineFallback, setOfflineFallback] = useState(false);
+  const [manualFacilities, setManualFacilities] = useState([]);
+  const [smsNotice, setSmsNotice] = useState('');
+  const { submitOrQueue } = useOfflineQueue();
 
   useEffect(() => {
     referralsApi.suggest(caseData.id)
@@ -414,24 +422,69 @@ function ReferralPanel({ caseData, onDone }) {
         setEngineVersion(data.engine_version || '');
         if (data.recommended_facility) setSelected(data.recommended_facility);
       })
-      .catch(() => setError('Could not load suggestions. Check your network and try again.'))
+      .catch((err) => {
+        if (isNetworkError(err)) {
+          // No connectivity — fall back to the facility list cached by the
+          // case-create step (same 'facilities_list' cache key), so the
+          // health worker can still pick a facility and create the
+          // referral manually. This is the gap that used to leave this
+          // screen stuck at "Analysing case with AI engine…" forever with
+          // no way forward when offline.
+          setOfflineFallback(true);
+          cachedFetch('facilities_list', () => facilitiesApi.list().then((r) => r.data))
+            .then(({ data }) => setManualFacilities(Array.isArray(data) ? data : (data.results || [])))
+            .catch(() => setError('No cached facility list available either — connect once to load it, then this will work offline.'));
+        } else {
+          setError('Could not load suggestions. Check your network and try again.');
+        }
+      })
       .finally(() => setLoading(false));
   }, [caseData.id]);
 
-  const allOptions = [recommended, ...alternatives].filter(Boolean);
+  const allOptions = offlineFallback
+    ? manualFacilities
+    : [recommended, ...alternatives].filter(Boolean);
   const needsOverride = selected && recommended && selected.id !== recommended.id;
 
   const handleCreate = async () => {
-    setError(''); setCreating(true);
+    setError(''); setCreating(true); setSmsNotice('');
     try {
-      await referralsApi.create({
-        emergency_case_id: caseData.id,
-        receiving_facility_id: selected.id,
-        engine_recommendation_id: recommended?.id || null,
-        engine_version: engineVersion,
-        override_reason: override,
-        idempotency_key: generateIdempotencyKey(),
+      const result = await submitOrQueue({
+        method: 'post',
+        url: '/api/referrals/create/',
+        data: {
+          emergency_case_id: caseData.id,
+          receiving_facility_id: selected.id,
+          engine_recommendation_id: recommended?.id || null,
+          engine_version: engineVersion,
+          override_reason: override,
+          idempotency_key: generateIdempotencyKey(),
+        },
+        meta: { kind: QueueKinds.REFERRAL_CREATE, label: `${caseData.patient?.patient_name || 'Referral'} → ${selected.name}` },
       });
+      if (result.queued) {
+        // This is the SMS side-channel (item 5 of the offline-first plan):
+        // the referral write is safely queued for sync, but that could sit
+        // for a while with no data connectivity — so also fire an SMS
+        // right now, over the phone's own SMS radio, which reaches much
+        // further than mobile data in this region. One tap to send; never
+        // blocks the rest of this flow.
+        //
+        // Primary: gateway-addressed, auto-creates a real referral
+        // server-side the moment it's received (sms_inbound_service.py) —
+        // same automation level as the USSD fallback, and the receiving
+        // facility gets notified automatically once that referral exists.
+        const autoSent = await triggerAutoReferralSms({
+          age: caseData.patient?.age,
+          dangerSigns: caseData.danger_signs,
+          patientName: caseData.patient?.patient_name,
+        });
+        setSmsNotice(
+          autoSent
+            ? 'Saved offline. A referral SMS has been opened — please tap Send. This will create the referral automatically once received.'
+            : 'Saved offline. Could not open the SMS app — please call the facility directly if this is urgent.'
+        );
+      }
       onDone();
     } catch (err) {
       setError(getErrorMessage(err));
@@ -444,13 +497,19 @@ function ReferralPanel({ caseData, onDone }) {
   return (
     <View>
       <ErrorBanner message={error} onDismiss={() => setError('')} />
+      {!!smsNotice && <Text style={styles.smsNotice}>{smsNotice}</Text>}
+      {offlineFallback && (
+        <Text style={styles.cacheNotice}>
+          No connection — showing your last-cached facility list. Pick one manually; the AI recommendation isn't available offline.
+        </Text>
+      )}
       {allOptions.map((s, i) => (
         <TouchableOpacity key={s.id} style={[styles.facilityCard, selected?.id === s.id && styles.facilityCardActive]} onPress={() => setSelected(s)}>
           <View style={[styles.rankBadge, i === 0 && styles.rankBadgeTop]}><Text style={[styles.rankText, i === 0 && styles.rankTextTop]}>{i + 1}</Text></View>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <Text style={styles.facilityName}>{s.name}</Text>
-              {i === 0 && <Badge label="Recommended" variant="success" />}
+              {!offlineFallback && i === 0 && <Badge label="Recommended" variant="success" />}
               {!!s.level_display && <Badge label={s.level_display} variant="default" />}
             </View>
             <View style={{ flexDirection: 'row', gap: Spacing[3], marginTop: 4 }}>
@@ -468,6 +527,7 @@ function ReferralPanel({ caseData, onDone }) {
 
       <View style={styles.footerRow}>
         <Button title="Skip for now" variant="outline" onPress={onDone} style={{ flex: 1 }} />
+
         <Button title="Create Referral" icon="swap-horizontal" onPress={handleCreate} loading={creating} disabled={!selected || (needsOverride && !override)} style={{ flex: 2 }} />
       </View>
     </View>
@@ -572,6 +632,7 @@ const styles = StyleSheet.create({
   sectionSub: { textTransform: 'none', fontWeight: Typography.regular },
   hintBox: { backgroundColor: Colors.primaryLight, borderRadius: Radius.md, padding: Spacing[3], marginBottom: Spacing[3] },
   cacheNotice: { fontSize: Typography.xs, color: Colors.warningDark, marginBottom: Spacing[2] },
+  smsNotice: { fontSize: Typography.xs, fontWeight: Typography.semibold, color: Colors.primaryDark, backgroundColor: Colors.primaryLight, borderRadius: Radius.md, padding: Spacing[2], marginBottom: Spacing[2] },
   hintTitle: { fontSize: Typography.sm, fontWeight: Typography.semibold, color: Colors.primaryDark },
   hintBody: { fontSize: Typography.xs, color: Colors.primaryDark, marginTop: 2 },
   searchRow: { flexDirection: 'row', alignItems: 'flex-start' },

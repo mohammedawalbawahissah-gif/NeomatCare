@@ -71,7 +71,7 @@ export default function TransportScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + Spacing[5] }]}>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[16] }]}>
         <View>
           <Text style={styles.headerTitle}>Transport</Text>
           <Text style={styles.headerSub}>{fleet.length} vehicle{fleet.length !== 1 ? 's' : ''} · {active.length} active</Text>

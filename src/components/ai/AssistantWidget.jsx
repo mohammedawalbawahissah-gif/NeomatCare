@@ -157,9 +157,10 @@ export default function AssistantWidget({ context = {} }) {
 
   return (
     <>
-      {/* FAB */}
+      {/* FAB — bottom offset clears the tab bar (height: 64 + insets.bottom,
+          see RootNavigator's TAB_OPTIONS) with a 16px gap above it. */}
       <TouchableOpacity
-        style={[styles.fab, { backgroundColor: config.color, bottom: insets.bottom + Spacing[5] }]}
+        style={[styles.fab, { backgroundColor: config.color, bottom: insets.bottom + 80 }]}
         onPress={() => setOpen(true)}
         activeOpacity={0.85}
       >

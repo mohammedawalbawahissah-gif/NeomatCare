@@ -27,12 +27,23 @@
  * not just a permission + a small bridge).
  */
 import { useState, useRef, useCallback, useEffect } from 'react';
-import {
-  RTCPeerConnection,
-  RTCIceCandidate,
-  mediaDevices,
-} from 'react-native-webrtc';
 import { consultationsApi } from '../api/client';
+
+// TEMP (expo-go-test branch): lazy/guarded require so this module doesn't
+// crash on import in Expo Go, where react-native-webrtc's native module
+// isn't linked. Mirrors the existing pattern in services/voice.js.
+// Revert: restore the static `import { RTCPeerConnection, RTCIceCandidate,
+// mediaDevices } from 'react-native-webrtc';` at the top of this file.
+let RTCPeerConnection = null;
+let RTCIceCandidate = null;
+let mediaDevices = null;
+try {
+  ({ RTCPeerConnection, RTCIceCandidate, mediaDevices } = require('react-native-webrtc'));
+} catch {
+  RTCPeerConnection = null;
+  RTCIceCandidate = null;
+  mediaDevices = null;
+}
 
 const FALLBACK_ICE_SERVERS = {
   iceServers: [
@@ -168,6 +179,11 @@ export function useWebRTCCall(consultationId, currentUserId) {
     setErrorMsg('');
     setCallType(type);
     setStatus('calling');
+    if (!mediaDevices || !RTCPeerConnection) {
+      setErrorMsg('Calling needs a rebuilt app (native module not available in Expo Go).');
+      setStatus('error');
+      return;
+    }
     try {
       const stream = await mediaDevices.getUserMedia({ video: type === 'video', audio: true });
       setLocalStream(stream);
@@ -189,6 +205,11 @@ export function useWebRTCCall(consultationId, currentUserId) {
     setErrorMsg('');
     setStatus('connecting');
     setCallType(incomingOffer.call_type);
+    if (!mediaDevices || !RTCPeerConnection) {
+      setErrorMsg('Calling needs a rebuilt app (native module not available in Expo Go).');
+      setStatus('error');
+      return;
+    }
     try {
       const stream = await mediaDevices.getUserMedia({ video: incomingOffer.call_type === 'video', audio: true });
       setLocalStream(stream);

@@ -199,7 +199,7 @@ export default function PatientDetailScreen({ route, navigation }) {
 function Header({ navigation, title }) {
   const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.header, { paddingTop: insets.top + Spacing[5] }]}>
+    <View style={[styles.header, { paddingTop: insets.top + Spacing[16] }]}>
       <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
         <Ionicons name="arrow-back" size={22} color={Colors.textPrimary} />
       </TouchableOpacity>

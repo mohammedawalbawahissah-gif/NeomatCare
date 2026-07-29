@@ -40,7 +40,7 @@ export default function FacilitiesScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + Spacing[5] }]}>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[16] }]}>
         <View>
           <Text style={styles.headerTitle}>Facilities Registry</Text>
           <Text style={styles.headerSub}>{facilities.length} facilities registered</Text>

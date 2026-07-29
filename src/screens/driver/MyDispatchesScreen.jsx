@@ -59,7 +59,7 @@ export default function MyDispatchesScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + Spacing[5] }]}>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[16] }]}>
         <Text style={styles.headerTitle}>My Dispatches</Text>
         <Text style={styles.headerSub}>{active.length} active</Text>
       </View>

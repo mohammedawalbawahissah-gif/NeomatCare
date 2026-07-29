@@ -63,7 +63,7 @@ export default function ProfileScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: Spacing[4], paddingTop: insets.top + Spacing[4], paddingBottom: Spacing[10] }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingHorizontal: Spacing[4], paddingTop: insets.top + Spacing[16], paddingBottom: Spacing[10] }} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>My Profile</Text>
         <Text style={styles.subtitle}>Manage your account information and password</Text>
 

@@ -12,9 +12,29 @@ import { Input, Select, Button, Modal, Spinner, Badge, ErrorBanner, Card } from 
 import VoiceEntryBar, { VoiceEntryTrigger } from '../../components/voice/VoiceEntryBar';
 import useVoiceEntry from '../../hooks/useVoiceEntry';
 import { useWebRTCCall } from '../../hooks/useWebRTCCall';
-import { RTCView } from 'react-native-webrtc';
 import Colors from '../../constants/colors';
 import { Typography, Spacing, Radius, Shadow } from '../../constants/theme';
+
+// TEMP (expo-go-test branch): lazy/guarded require, same reasoning as
+// useWebRTCCall.js. Revert: restore the static
+// `import { RTCView } from 'react-native-webrtc';` above.
+let RTCView = null;
+try {
+  ({ RTCView } = require('react-native-webrtc'));
+} catch {
+  RTCView = null;
+}
+if (!RTCView) {
+  // Expo Go fallback: plain placeholder so the video-call UI renders
+  // instead of crashing. Never reached in a real dev-client build.
+  RTCView = function RTCViewFallback({ style }) {
+    return (
+      <View style={[style, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' }]}>
+        <Text style={{ color: '#fff', fontSize: 12 }}>Video needs a rebuilt app (Expo Go)</Text>
+      </View>
+    );
+  };
+}
 
 const STATUS_VARIANT = { pending: 'warning', active: 'info', completed: 'success', cancelled: 'danger' };
 const STATUS_OPTIONS = [

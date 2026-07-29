@@ -86,7 +86,7 @@ export default function ConsultationsScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + Spacing[5] }]}>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[16] }]}>
         <View>
           <Text style={styles.headerTitle}>Consultations</Text>
           <Text style={styles.headerSub}>{items.length} consultation{items.length !== 1 ? 's' : ''} · {specialists.length} specialist{specialists.length !== 1 ? 's' : ''}</Text>

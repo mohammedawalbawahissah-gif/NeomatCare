@@ -38,13 +38,39 @@ export const QueueKinds = {
   CASE_CREATE: 'case_create',
   REFERRAL_CREATE: 'referral_create',
   ANC_VISIT_CREATE: 'anc_visit_create',
+  HOUSEHOLD_CREATE: 'household_create',
+  GROWTH_RECORD_CREATE: 'growth_record_create',
 };
+
+// Priority-tiered queue (item 5 of the offline-first work). HIGH-priority
+// items are the emergency-adjacent ones — an emergency case or a referral
+// sitting queued has real, time-critical consequences (see the SMS
+// side-channel in smsReferralFallback.js, which fires immediately for
+// these kinds rather than waiting for the queue to drain). Everything else
+// stays on the original lazy-sync path: a delayed ANC visit or growth log
+// is not a safety issue the same way a stuck referral is.
+export const Priority = { HIGH: 'high', ROUTINE: 'routine' };
+
+const KIND_PRIORITY = {
+  [QueueKinds.CASE_CREATE]: Priority.HIGH,
+  [QueueKinds.REFERRAL_CREATE]: Priority.HIGH,
+  [QueueKinds.PATIENT_CREATE]: Priority.ROUTINE,
+  [QueueKinds.ANC_VISIT_CREATE]: Priority.ROUTINE,
+  [QueueKinds.HOUSEHOLD_CREATE]: Priority.ROUTINE,
+  [QueueKinds.GROWTH_RECORD_CREATE]: Priority.ROUTINE,
+};
+
+export function getPriority(kind) {
+  return KIND_PRIORITY[kind] || Priority.ROUTINE;
+}
 
 export const QueueKindInfo = {
   [QueueKinds.PATIENT_CREATE]:   { entityLabel: 'Patient',   actionLabel: 'New patient record', icon: 'person-add-outline' },
   [QueueKinds.CASE_CREATE]:      { entityLabel: 'Case',      actionLabel: 'New emergency case',  icon: 'alert-circle-outline' },
   [QueueKinds.REFERRAL_CREATE]:  { entityLabel: 'Referral',  actionLabel: 'New referral',        icon: 'swap-horizontal-outline' },
   [QueueKinds.ANC_VISIT_CREATE]: { entityLabel: 'ANC Visit', actionLabel: 'New ANC visit',       icon: 'medkit-outline' },
+  [QueueKinds.HOUSEHOLD_CREATE]:      { entityLabel: 'Household',     actionLabel: 'New household',       icon: 'home-outline' },
+  [QueueKinds.GROWTH_RECORD_CREATE]:  { entityLabel: 'Growth Record', actionLabel: 'New growth record',   icon: 'body-outline' },
 };
 
 /** True once a queued item has exhausted retries and needs a human to look at it. */
@@ -113,7 +139,7 @@ export async function enqueueMutation({ method, url, data, meta = {} }) {
     method,
     url,
     data,
-    meta,
+    meta: { ...meta, priority: meta.priority || getPriority(meta.kind) },
     createdAt: Date.now(),
     retries: 0,
     lastError: null,
@@ -158,7 +184,15 @@ export async function processQueue({ onItemSynced, onItemFailed } = {}) {
   let failed = 0;
   try {
     await loadQueue();
-    const items = [...memoryQueue]; // snapshot order; items are shared refs with memoryQueue
+    // HIGH-priority items (emergency cases, referrals) drain first — a
+    // stuck referral sitting behind a batch of routine ANC visits in FIFO
+    // order is exactly the kind of delay item 5 exists to avoid. Within a
+    // priority tier, original FIFO order (oldest first) is preserved.
+    const items = [...memoryQueue].sort((a, b) => {
+      const pa = a.meta?.priority === Priority.HIGH ? 0 : 1;
+      const pb = b.meta?.priority === Priority.HIGH ? 0 : 1;
+      return pa - pb || a.createdAt - b.createdAt;
+    });
     for (const item of items) {
       if (item.retries >= MAX_RETRIES) continue; // needs manual review, skip auto-retry
 

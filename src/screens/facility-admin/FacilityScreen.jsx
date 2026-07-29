@@ -65,7 +65,7 @@ export default function FacilityScreen() {
   const f = facility;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingHorizontal: Spacing[4], paddingTop: insets.top + Spacing[4], paddingBottom: Spacing[10] }}>
+    <ScrollView style={styles.container} contentContainerStyle={{ paddingHorizontal: Spacing[4], paddingTop: insets.top + Spacing[16], paddingBottom: Spacing[10] }}>
       <Text style={styles.title}>{f.name}</Text>
       <Text style={styles.subtitle}>{LEVEL_LABELS[f.level] || `Level ${f.level}`} · {f.district}{f.region ? `, ${f.region}` : ''}</Text>
 

@@ -12,6 +12,12 @@ import { Typography, Spacing, Radius, Shadow } from '../../constants/theme';
 
 const ROLE_LABELS = { health_worker: 'Health Worker', facility_admin: 'Facility Admin', specialist: 'Specialist', driver: 'Driver', superadmin: 'Superadmin' };
 const ROLE_VARIANT = { health_worker: 'success', facility_admin: 'info', specialist: 'primary', driver: 'warning', superadmin: 'danger' };
+// Display-only maps for the list/filter UI — includes patient (a portal
+// role, not a staff role admins create here), kept separate from
+// ROLE_LABELS/ROLE_VARIANT above, which drive the "assignable role" picker
+// in the create/edit staff form (patients register through the app).
+const DISPLAY_ROLE_LABELS = { ...ROLE_LABELS, patient: 'Patient' };
+const DISPLAY_ROLE_VARIANT = { ...ROLE_VARIANT, patient: 'default' };
 const FACILITY_ROLES = ['health_worker', 'facility_admin'];
 const timeAgo = (d) => {
   const mins = Math.floor((Date.now() - new Date(d).getTime()) / 60000);
@@ -33,6 +39,7 @@ export default function UsersScreen() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
+  const [wellnessTypeFilter, setWellnessTypeFilter] = useState('');
   const [createModal, setCreateModal] = useState(false);
   const [editUser, setEditUser] = useState(null);
   const [deleteUser, setDeleteUser] = useState(null);
@@ -88,7 +95,7 @@ export default function UsersScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + Spacing[5] }]}>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[16] }]}>
         <View>
           <Text style={styles.headerTitle}>Users</Text>
           <Text style={styles.headerSub}>{isFacilityAdmin ? 'Users at your facility' : 'All platform users'}</Text>
@@ -105,15 +112,34 @@ export default function UsersScreen() {
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: Spacing[3] }}>
           <View style={{ flexDirection: 'row', gap: Spacing[2] }}>
-            {Object.entries(ROLE_LABELS).map(([role, label]) => (
+            {Object.entries(DISPLAY_ROLE_LABELS).filter(([role]) => role !== 'patient').map(([role, label]) => (
               <TouchableOpacity
                 key={role} style={[styles.roleChip, roleFilter === role && styles.roleChipActive]}
-                onPress={() => setRoleFilter((r) => (r === role ? '' : role))}
+                onPress={() => { setRoleFilter((r) => (r === role ? '' : role)); setWellnessTypeFilter(''); }}
               >
                 <Text style={styles.roleChipCount}>{allUsers.filter((u) => u.role === role).length}</Text>
                 <Text style={styles.roleChipLabel}>{label}</Text>
               </TouchableOpacity>
             ))}
+            {[
+              { key: 'maternal', label: 'Maternal' },
+              { key: 'wellness', label: 'Wellness' },
+            ].map(({ key, label }) => {
+              const chipCount = allUsers.filter((u) => u.role === 'patient' && (u.wellness_type === 'wellness') === (key === 'wellness')).length;
+              const active = roleFilter === 'patient' && wellnessTypeFilter === key;
+              return (
+                <TouchableOpacity
+                  key={key} style={[styles.roleChip, active && styles.roleChipActive]}
+                  onPress={() => {
+                    if (active) { setRoleFilter(''); setWellnessTypeFilter(''); }
+                    else { setRoleFilter('patient'); setWellnessTypeFilter(key); }
+                  }}
+                >
+                  <Text style={styles.roleChipCount}>{chipCount}</Text>
+                  <Text style={styles.roleChipLabel}>{label}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </ScrollView>
 
@@ -121,13 +147,22 @@ export default function UsersScreen() {
 
         {loading ? <Spinner /> : users.length === 0 ? (
           <EmptyState icon="people-outline" title="No users found" message="Try adjusting your search or filters" />
-        ) : users.map((u) => (
+        ) : users
+            .filter((u) => !(wellnessTypeFilter && roleFilter === 'patient') ||
+              (u.wellness_type === 'wellness') === (wellnessTypeFilter === 'wellness'))
+            .map((u) => (
           <View key={u.id} style={styles.card}>
             <Avatar name={u.name} size={40} />
             <View style={{ flex: 1 }}>
               <View style={styles.cardTitleRow}>
                 <Text style={styles.cardName}>{u.name}</Text>
-                <Badge label={ROLE_LABELS[u.role] || u.role} variant={ROLE_VARIANT[u.role]} />
+                <Badge label={DISPLAY_ROLE_LABELS[u.role] || u.role} variant={DISPLAY_ROLE_VARIANT[u.role]} />
+                {u.role === 'patient' && (
+                  <Badge
+                    label={u.wellness_type === 'wellness' ? 'Wellness' : 'Maternal'}
+                    variant={u.wellness_type === 'wellness' ? 'warning' : 'primary'}
+                  />
+                )}
                 {!u.is_active && <Badge label="Inactive" variant="default" />}
                 {u.role !== 'patient' && u.role !== 'superadmin' && !u.is_approved && (
                   <Badge label="Pending Approval" variant="warning" />

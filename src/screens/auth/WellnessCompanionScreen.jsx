@@ -16,7 +16,7 @@ export default function WellnessCompanionScreen({ navigation }) {
 
   const [form, setForm] = useState({
     name: '', email: '', password: '', password2: '',
-    phone_number: '', otp_channel: 'sms',
+    phone_number: '', otp_channel: 'sms', wellness_type: 'maternal',
   });
   const [localError, setLocalError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -39,7 +39,7 @@ export default function WellnessCompanionScreen({ navigation }) {
       name: form.name, email: form.email,
       password: form.password, password2: form.password2,
       role: 'patient', otp_channel: form.otp_channel,
-      phone_number: form.phone_number,
+      phone_number: form.phone_number, wellness_type: form.wellness_type,
     });
     setSubmitting(false);
 
@@ -70,6 +70,23 @@ export default function WellnessCompanionScreen({ navigation }) {
 
           <Input label="Full Name" required value={form.name} onChangeText={set('name')}
             placeholder="Your full name" icon="person-outline" />
+
+          <Text style={styles.channelLabel}>Which best describes you? <Text style={styles.req}>*</Text></Text>
+          <View style={styles.channelRow}>
+            {[
+              { value: 'maternal', label: 'Pregnant / New Mother', sub: 'Pregnancy tracker & more' },
+              { value: 'wellness', label: 'General Wellness',      sub: 'Cycle tracking & nutrition' },
+            ].map((wt) => (
+              <TouchableOpacity
+                key={wt.value}
+                style={[styles.channelBtn, form.wellness_type === wt.value && styles.channelBtnActive]}
+                onPress={() => set('wellness_type')(wt.value)}
+              >
+                <Text style={[styles.channelBtnLabel, form.wellness_type === wt.value && styles.channelBtnLabelActive]}>{wt.label}</Text>
+                <Text style={styles.channelBtnSub}>{wt.sub}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
           <Input label="Email Address" required value={form.email} onChangeText={set('email')}
             placeholder="you@example.com" icon="mail-outline" autoCapitalize="none" keyboardType="email-address" />

@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../contexts/AuthContext';
-import { patientPortalApi, transportApi, wellnessApi, getErrorMessage } from '../../api/client';
+import { patientPortalApi, transportApi, wellnessApi, householdsApi, getErrorMessage } from '../../api/client';
 import { Input, Select, Button, Spinner, Badge, ErrorBanner, Card } from '../../components/ui';
 import VoiceEntryBar, { VoiceEntryTrigger } from '../../components/voice/VoiceEntryBar';
 import useVoiceEntry from '../../hooks/useVoiceEntry';
@@ -14,17 +14,26 @@ import { Typography, Spacing, Radius, Shadow } from '../../constants/theme';
 const TABS = [
   { id: 'pregnancy', label: 'Pregnancy', icon: 'body-outline' },
   { id: 'cycle', label: 'Cycle', icon: 'water-outline' },
+  { id: 'household', label: 'My Household', icon: 'home-outline' },
+  { id: 'nutrition', label: 'Nutrition', icon: 'nutrition-outline' },
   { id: 'reviews', label: 'Reviews', icon: 'star-outline' },
   { id: 'oncall', label: 'On-Call', icon: 'call-outline' },
   { id: 'transport', label: 'Transport', icon: 'car-outline' },
   { id: 'health', label: 'My Health', icon: 'heart-outline' },
 ];
 
+// A non-pregnant Wellness user only gets cycle tracking, adult nutrition
+// guidance, and paid telehealth. Mirrors WELLNESS_TAB_IDS on web. On-Call
+// is relabeled "Consult" for Wellness users only — Maternal keeps "On-Call".
+const WELLNESS_TAB_IDS = ['cycle', 'nutrition', 'oncall'];
+
 // Mirrors TAB_COLORS on web exactly — soft tint when inactive, solid fill
 // when active, so the whole bar visibly shifts mood with the selected tab.
 const TAB_COLORS = {
   pregnancy: { tint: '#dcfce7', text: '#166534', solid: '#16a34a' },
   cycle:     { tint: '#fce7f3', text: '#831843', solid: '#be185d' },
+  household: { tint: '#dcfce7', text: '#166534', solid: '#207652' },
+  nutrition: { tint: '#fef3c7', text: '#92400e', solid: '#b45309' },
   reviews:   { tint: '#fef3c7', text: '#92400e', solid: '#b45309' },
   oncall:    { tint: '#dbeafe', text: '#1e3a8a', solid: '#1d4ed8' },
   transport: { tint: '#ffedd5', text: '#9a3412', solid: '#c2410c' },
@@ -32,19 +41,21 @@ const TAB_COLORS = {
 };
 
 export default function PatientPortalScreen() {
-  const { user } = useAuth();
-  const [tab, setTab] = useState('pregnancy');
+  const { user, isWellness } = useAuth();
+  const visibleTabs = (isWellness ? TABS.filter((t) => WELLNESS_TAB_IDS.includes(t.id)) : TABS)
+    .map((t) => (t.id === 'oncall' && isWellness ? { ...t, label: 'Consult' } : t));
+  const [tab, setTab] = useState(isWellness ? 'cycle' : 'pregnancy');
   const insets = useSafeAreaInsets();
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + Spacing[3] }]}>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[16] }]}>
         <Text style={styles.title}>Welcome, {user?.name?.split(' ')[0]} 👋</Text>
-        <Text style={styles.subtitle}>Your personal maternity care portal</Text>
+        <Text style={styles.subtitle}>{isWellness ? 'Your personal wellness portal' : 'Your personal maternity care portal'}</Text>
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBarWrap} contentContainerStyle={styles.tabBar}>
-        {TABS.map((t) => {
+        {visibleTabs.map((t) => {
           const c = TAB_COLORS[t.id];
           const isActive = tab === t.id;
           return (
@@ -67,6 +78,8 @@ export default function PatientPortalScreen() {
       <ScrollView contentContainerStyle={{ padding: Spacing[4], paddingBottom: Spacing[10] }}>
         {tab === 'pregnancy' && <PregnancyTab />}
         {tab === 'cycle' && <CycleTrackerTab />}
+        {tab === 'household' && <HouseholdTab />}
+        {tab === 'nutrition' && <NutritionTab />}
         {tab === 'reviews' && <ReviewsTab />}
         {tab === 'oncall' && <OnCallTab />}
         {tab === 'transport' && <TransportTab />}
@@ -614,7 +627,210 @@ function TransportTab() {
   );
 }
 
-// ─── 5. My Health ───────────────────────────────────────────────────────────────
+// ─── 5. My Household (plain member list — no risk ranking shown to a caregiver) ──
+function HouseholdTab() {
+  const [household, setHousehold] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    householdsApi.list()
+      .then(({ data }) => setHousehold((Array.isArray(data) ? data : data.results || [])[0] || null))
+      .catch((err) => setError(getErrorMessage(err)))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <Spinner />;
+  if (error) return <ErrorBanner message={error} />;
+
+  if (!household) {
+    return (
+      <Card>
+        <View style={{ alignItems: 'center', padding: Spacing[3] }}>
+          <Ionicons name="home-outline" size={28} color={Colors.gray400} />
+          <Text style={[styles.privacyText, { textAlign: 'center', marginTop: 8 }]}>
+            You're not linked to a household record yet. Ask your health worker to add you during your next visit.
+          </Text>
+        </View>
+      </Card>
+    );
+  }
+
+  return (
+    <View>
+      <View style={styles.householdBanner}>
+        <View style={styles.householdBannerIcon}>
+          <Ionicons name="home" size={20} color={Colors.white} />
+        </View>
+        <View>
+          <Text style={styles.householdBannerName}>{household.head_name || 'Your household'}</Text>
+          <Text style={styles.householdBannerTown}>{household.town || 'Unknown town'}</Text>
+        </View>
+      </View>
+
+      <Card>
+        <Text style={styles.cardHeading}>Household Members</Text>
+        {(household.members || []).length === 0 ? (
+          <Text style={styles.privacyText}>No members registered yet.</Text>
+        ) : (
+          household.members.map((m) => (
+            <View key={m.id} style={styles.memberRow}>
+              <Ionicons name="person-outline" size={16} color={Colors.gray400} />
+              <View>
+                <Text style={styles.memberName}>{m.patient_name}</Text>
+                <Text style={styles.memberMeta}>{m.patient_type} · Age {m.age}</Text>
+              </View>
+            </View>
+          ))
+        )}
+      </Card>
+    </View>
+  );
+}
+
+// ─── Local food guidance block (shared across pregnancy / child / adult) ────────
+function LocalFoodBlock({ tips, aiSuggestion }) {
+  if (!tips || tips.length === 0) return null;
+  return (
+    <View style={styles.guidanceAmberBox}>
+      <Text style={styles.guidanceAmberTitle}>Local foods that can help</Text>
+      {aiSuggestion ? <Text style={styles.guidanceAmberText}>{aiSuggestion}</Text> : null}
+      {tips.map((tip, i) => (
+        <Text key={i} style={styles.guidanceAmberTip}>• {tip}</Text>
+      ))}
+    </View>
+  );
+}
+
+// ─── 6. Nutrition (self-serve — real guidance per child, no risk ranking) ───────
+function NutritionTab() {
+  const { isWellness } = useAuth();
+  const [household, setHousehold] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [guidanceByChild, setGuidanceByChild] = useState({});
+  const [pregnancyGuidance, setPregnancyGuidance] = useState(undefined);
+  const [adultGuidance, setAdultGuidance] = useState(undefined);
+
+  useEffect(() => {
+    if (isWellness) {
+      wellnessApi.adultNutrition()
+        .then(({ data }) => setAdultGuidance(data))
+        .catch(() => setAdultGuidance(null))
+        .finally(() => setLoading(false));
+      return;
+    }
+
+    wellnessApi.myPregnancy()
+      .then(({ data }) => setPregnancyGuidance(data))
+      .catch(() => setPregnancyGuidance(null));
+
+    householdsApi.list()
+      .then(({ data }) => {
+        const h = (Array.isArray(data) ? data : data.results || [])[0] || null;
+        setHousehold(h);
+        const children = (h?.members || []).filter((m) => m.patient_type === 'child');
+        children.forEach((c) => {
+          wellnessApi.childNutrition(c.id)
+            .then(({ data }) => setGuidanceByChild((g) => ({ ...g, [c.id]: data })))
+            .catch(() => setGuidanceByChild((g) => ({ ...g, [c.id]: null })));
+        });
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [isWellness]);
+
+  const children = (household?.members || []).filter((m) => m.patient_type === 'child');
+
+  if (loading) return <Spinner />;
+
+  // ── Wellness (non-pregnant) users ──────────────────────────────────────
+  if (isWellness) {
+    return (
+      <Card>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <Ionicons name="nutrition-outline" size={18} color={Colors.primary} />
+          <Text style={styles.cardHeading}>Your Nutrition Guidance</Text>
+        </View>
+        {adultGuidance ? (
+          <>
+            <View style={styles.guidanceGreenBox}>
+              {adultGuidance.feeding_tips.map((tip, i) => (
+                <Text key={i} style={styles.guidanceGreenText}>• {tip}</Text>
+              ))}
+            </View>
+            <LocalFoodBlock tips={adultGuidance.local_food_tips} aiSuggestion={adultGuidance.local_food_ai_suggestion} />
+          </>
+        ) : (
+          <Text style={styles.privacyText}>No nutrition guidance available yet.</Text>
+        )}
+      </Card>
+    );
+  }
+
+  // ── Maternal users: pregnancy nutrition + under-5 children ─────────────
+  return (
+    <View>
+      {pregnancyGuidance ? (
+        <Card>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <Ionicons name="body-outline" size={18} color={Colors.primary} />
+            <Text style={styles.cardHeading}>Your Pregnancy Nutrition — Week {pregnancyGuidance.current_week}</Text>
+          </View>
+          <View style={styles.guidanceGreenBox}>
+            {pregnancyGuidance.trimester_content.nutrition.map((tip, i) => (
+              <Text key={i} style={styles.guidanceGreenText}>• {tip}</Text>
+            ))}
+          </View>
+          <LocalFoodBlock tips={pregnancyGuidance.local_food_tips} aiSuggestion={pregnancyGuidance.local_food_ai_suggestion} />
+        </Card>
+      ) : null}
+
+      {children.length === 0 ? (
+        <Card>
+          <Text style={styles.cardHeading}>Children Under Five</Text>
+          <Text style={styles.privacyText}>No children under five linked to your household yet.</Text>
+        </Card>
+      ) : (
+        children.map((c) => {
+        const g = guidanceByChild[c.id];
+        return (
+          <Card key={c.id}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <Ionicons name="body-outline" size={18} color={Colors.primary} />
+              <Text style={styles.cardHeading}>{c.patient_name} · Age {c.age}</Text>
+            </View>
+
+            {g === undefined ? (
+              <Text style={styles.privacyText}>Loading guidance…</Text>
+            ) : g === null ? (
+              <Text style={styles.privacyText}>
+                No date of birth on file yet — ask your health worker to add one so we can show age-appropriate guidance.
+              </Text>
+            ) : (
+              <>
+                <View style={styles.guidanceGreenBox}>
+                  <Text style={styles.guidanceGreenTitle}>Feeding guidance — {g.age_band}</Text>
+                  {g.feeding_tips.map((tip, i) => (
+                    <Text key={i} style={styles.guidanceGreenText}>• {tip}</Text>
+                  ))}
+                </View>
+                <View style={styles.guidanceRedBox}>
+                  <Text style={styles.guidanceRedTitle}>Seek care immediately if you see</Text>
+                  {g.danger_signs.slice(0, 5).map((sign, i) => (
+                    <Text key={i} style={styles.guidanceRedText}>• {sign}</Text>
+                  ))}
+                </View>
+                <LocalFoodBlock tips={g.local_food_tips} aiSuggestion={g.local_food_ai_suggestion} />
+              </>
+            )}
+          </Card>
+        );
+      }))}
+    </View>
+  );
+}
+
+// ─── 7. My Health ───────────────────────────────────────────────────────────────
 function MyHealthTab() {
   const { user } = useAuth();
   const [profile, setProfile] = useState(null);
@@ -747,4 +963,42 @@ const styles = StyleSheet.create({
   infoValue: { fontSize: Typography.sm, color: Colors.textPrimary, fontWeight: Typography.medium, flex: 1 },
   privacyText: { fontSize: Typography.xs, color: Colors.gray400, lineHeight: 18 },
   reminderText: { fontSize: Typography.sm, color: Colors.textSecondary, marginBottom: 6 },
+
+  householdBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing[3],
+    backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#86efac',
+    borderRadius: Radius.xl, padding: Spacing[4], marginBottom: Spacing[3],
+  },
+  householdBannerIcon: {
+    width: 44, height: 44, borderRadius: Radius.md, backgroundColor: '#207652',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  householdBannerName: { fontSize: Typography.md, fontWeight: Typography.bold, color: '#166534' },
+  householdBannerTown: { fontSize: Typography.xs, color: '#15803d', marginTop: 2 },
+  memberRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingVertical: Spacing[2], borderBottomWidth: 1, borderBottomColor: '#f1f5f9',
+  },
+  memberName: { fontSize: Typography.sm, fontWeight: Typography.medium, color: Colors.textPrimary },
+  memberMeta: { fontSize: Typography.xs, color: Colors.gray400, marginTop: 1, textTransform: 'capitalize' },
+
+  guidanceGreenBox: {
+    backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#bbf7d0',
+    borderRadius: Radius.md, padding: Spacing[3], marginBottom: Spacing[2],
+  },
+  guidanceGreenTitle: { fontSize: Typography.sm, fontWeight: Typography.semibold, color: '#166534', marginBottom: 6 },
+  guidanceGreenText: { fontSize: Typography.xs, color: '#166534', marginBottom: 3, lineHeight: 16 },
+  guidanceRedBox: {
+    backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fecaca',
+    borderRadius: Radius.md, padding: Spacing[3],
+  },
+  guidanceRedTitle: { fontSize: Typography.sm, fontWeight: Typography.semibold, color: '#991b1b', marginBottom: 6 },
+  guidanceRedText: { fontSize: Typography.xs, color: '#991b1b', marginBottom: 3, lineHeight: 16 },
+  guidanceAmberBox: {
+    backgroundColor: '#fffbeb', borderWidth: 1, borderColor: '#fde68a',
+    borderRadius: Radius.md, padding: Spacing[3], marginTop: Spacing[2],
+  },
+  guidanceAmberTitle: { fontSize: Typography.sm, fontWeight: Typography.semibold, color: '#92400e', marginBottom: 6 },
+  guidanceAmberText: { fontSize: Typography.xs, color: '#78350f', marginBottom: 8, lineHeight: 16 },
+  guidanceAmberTip: { fontSize: Typography.xs, color: '#92400e', marginBottom: 3, lineHeight: 16 },
 });

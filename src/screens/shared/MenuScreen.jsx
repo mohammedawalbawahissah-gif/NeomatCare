@@ -20,7 +20,7 @@ export default function MenuScreen({ items = [], title = 'Menu', subtitle }) {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + Spacing[3] }]}>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[16] }]}>
         <Text style={styles.title}>{title}</Text>
         {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
       </View>

@@ -16,6 +16,7 @@ import {
   processQueue,
   enqueueMutation,
   isNetworkError,
+  Priority,
 } from '../utils/offlineQueue';
 
 const OfflineQueueContext = createContext(null);
@@ -71,11 +72,16 @@ export function OfflineQueueProvider({ children }) {
   // Since NetInfo never reported a drop, no reconnect event will fire to
   // trigger a re-sync, and the item would otherwise sit queued until the
   // person happens to background/foreground the app. This catches that case.
+  //
+  // HIGH-priority items (emergency case/referral) get a much shorter
+  // interval — "aggressive retry" from the offline-first plan. A queued
+  // ANC visit waiting 45s longer is a non-issue; a queued referral is not.
   useEffect(() => {
     if (pending.length === 0) return undefined;
-    const interval = setInterval(() => sync(), 45000);
+    const hasHighPriority = pending.some((i) => i.meta?.priority === Priority.HIGH);
+    const interval = setInterval(() => sync(), hasHighPriority ? 15000 : 45000);
     return () => clearInterval(interval);
-  }, [pending.length, sync]);
+  }, [pending.length, pending, sync]);
 
   /**
    * Attempt a write live; if it fails because the device is offline, queue

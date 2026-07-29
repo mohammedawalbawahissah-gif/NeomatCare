@@ -2,6 +2,7 @@
   "expo": {
     "name": "NeoMatCare",
     "slug": "neomatcare-mobile",
+    "scheme": "neomatcare",
     "version": "1.0.0",
     "sdkVersion": "54.0.0",
     "orientation": "portrait",

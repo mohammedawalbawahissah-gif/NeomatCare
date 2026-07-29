@@ -42,6 +42,15 @@ import PatientsScreen      from '../screens/patients/PatientsScreen';
 import PatientDetailScreen from '../screens/patients/PatientDetailScreen';
 import PatientCreateScreen from '../screens/patients/PatientCreateScreen';
 
+// Households (shared: health_worker, facility_admin, superadmin)
+import HouseholdsScreen      from '../screens/households/HouseholdsScreen';
+import HouseholdDetailScreen from '../screens/households/HouseholdDetailScreen';
+import HouseholdCreateScreen from '../screens/households/HouseholdCreateScreen';
+
+// Nutrition (health_worker, superadmin)
+import NutritionScreen   from '../screens/nutrition/NutritionScreen';
+import ChildGrowthScreen from '../screens/nutrition/ChildGrowthScreen';
+
 // Referrals (shared)
 import ReferralsScreen       from '../screens/referrals/ReferralsScreen';
 import ReferralDetailScreen  from '../screens/referrals/ReferralDetailScreen';
@@ -100,6 +109,24 @@ const PatientsStack = () => (
     <Stack.Screen name="PatientsList"   component={PatientsScreen} />
     <Stack.Screen name="PatientDetail"  component={PatientDetailScreen} />
     <Stack.Screen name="PatientCreate"  component={PatientCreateScreen} />
+  </Stack.Navigator>
+);
+
+// --- Households Stack (health_worker, facility_admin, superadmin) --------------------
+const HouseholdsStack = () => (
+  <Stack.Navigator screenOptions={NO_HEADER}>
+    <Stack.Screen name="HouseholdsList"  component={HouseholdsScreen} />
+    <Stack.Screen name="HouseholdDetail" component={HouseholdDetailScreen} />
+    <Stack.Screen name="HouseholdCreate" component={HouseholdCreateScreen} />
+    <Stack.Screen name="PatientDetail"   component={PatientDetailScreen} />
+  </Stack.Navigator>
+);
+
+// --- Nutrition Stack (health_worker, superadmin) --------------------------------------
+const NutritionStack = () => (
+  <Stack.Navigator screenOptions={NO_HEADER}>
+    <Stack.Screen name="NutritionList" component={NutritionScreen} />
+    <Stack.Screen name="ChildGrowth"   component={ChildGrowthScreen} />
   </Stack.Navigator>
 );
 
@@ -162,6 +189,8 @@ const HealthWorkerMenu = () => {
       items={[
         { key: 'cases',         label: 'Cases',        icon: 'medical-outline',           color: '#dcfce7', iconColor: '#16a34a', onPress: () => nav.navigate('CasesTab') },
         { key: 'patients',      label: 'Patients',     icon: 'people-outline',             color: '#dbeafe', iconColor: '#1d4ed8', onPress: () => nav.navigate('PatientsTab') },
+        { key: 'households',    label: 'Households',   icon: 'home-outline',               color: '#dcfce7', iconColor: '#207652', onPress: () => nav.navigate('HouseholdsTab') },
+        { key: 'nutrition',     label: 'Nutrition',    icon: 'body-outline',               color: '#fef3c7', iconColor: '#b45309', onPress: () => nav.navigate('NutritionTab') },
         { key: 'referrals',     label: 'Referrals',    icon: 'swap-horizontal-outline',    color: '#fef3c7', iconColor: '#d97706', onPress: () => nav.navigate('Referrals') },
         { key: 'consultations', label: 'Consults',     icon: 'chatbubbles-outline',        color: '#ede9fe', iconColor: '#6d28d9', onPress: () => nav.navigate('Consultations') },
         { key: 'transport',     label: 'Transport',    icon: 'car-outline',                color: '#ffe4e6', iconColor: '#be123c', onPress: () => nav.navigate('Transport') },
@@ -175,6 +204,8 @@ const HealthWorkerMenuStack = () => (
     <Stack.Screen name="Menu"          component={HealthWorkerMenu} />
     <Stack.Screen name="CasesTab"      component={CasesStack} />
     <Stack.Screen name="PatientsTab"   component={PatientsStack} />
+    <Stack.Screen name="HouseholdsTab" component={HouseholdsStack} />
+    <Stack.Screen name="NutritionTab"  component={NutritionStack} />
     <Stack.Screen name="Referrals"     component={ReferralsStack} />
     <Stack.Screen name="Consultations" component={ConsultationsStack} />
     <Stack.Screen name="Transport"     component={TransportScreen} />
@@ -230,6 +261,7 @@ const FacilityAdminMenu = () => {
       items={[
         { key: 'cases',         label: 'Cases',        icon: 'medical-outline',           color: '#dcfce7', iconColor: '#16a34a', onPress: () => nav.navigate('CasesTab') },
         { key: 'patients',      label: 'Patients',     icon: 'people-outline',             color: '#dbeafe', iconColor: '#1d4ed8', onPress: () => nav.navigate('PatientsTab') },
+        { key: 'households',    label: 'Households',   icon: 'home-outline',               color: '#dcfce7', iconColor: '#207652', onPress: () => nav.navigate('HouseholdsTab') },
         { key: 'referrals',     label: 'Referrals',    icon: 'swap-horizontal-outline',    color: '#fef3c7', iconColor: '#d97706', onPress: () => nav.navigate('Referrals') },
         { key: 'consultations', label: 'Consults',     icon: 'chatbubbles-outline',        color: '#ede9fe', iconColor: '#6d28d9', onPress: () => nav.navigate('Consultations') },
         { key: 'transport',     label: 'Transport',    icon: 'car-outline',                color: '#ffe4e6', iconColor: '#be123c', onPress: () => nav.navigate('Transport') },
@@ -245,6 +277,7 @@ const FacilityAdminMenuStack = () => (
     <Stack.Screen name="Menu"          component={FacilityAdminMenu} />
     <Stack.Screen name="CasesTab"      component={CasesStack} />
     <Stack.Screen name="PatientsTab"   component={PatientsStack} />
+    <Stack.Screen name="HouseholdsTab" component={HouseholdsStack} />
     <Stack.Screen name="Referrals"     component={ReferralsStack} />
     <Stack.Screen name="Consultations" component={ConsultationsStack} />
     <Stack.Screen name="Transport"     component={TransportScreen} />
@@ -298,6 +331,8 @@ const SuperadminMenu = () => {
       items={[
         { key: 'cases',         label: 'Cases',        icon: 'medical-outline',           color: '#dcfce7', iconColor: '#16a34a', onPress: () => nav.navigate('CasesTab') },
         { key: 'patients',      label: 'Patients',     icon: 'people-outline',             color: '#dbeafe', iconColor: '#1d4ed8', onPress: () => nav.navigate('PatientsTab') },
+        { key: 'households',    label: 'Households',   icon: 'home-outline',               color: '#dcfce7', iconColor: '#207652', onPress: () => nav.navigate('HouseholdsTab') },
+        { key: 'nutrition',     label: 'Nutrition',    icon: 'body-outline',               color: '#fef3c7', iconColor: '#b45309', onPress: () => nav.navigate('NutritionTab') },
         { key: 'referrals',     label: 'Referrals',    icon: 'swap-horizontal-outline',    color: '#fef3c7', iconColor: '#d97706', onPress: () => nav.navigate('Referrals') },
         { key: 'consultations', label: 'Consults',     icon: 'chatbubbles-outline',        color: '#ede9fe', iconColor: '#6d28d9', onPress: () => nav.navigate('Consultations') },
         { key: 'transport',     label: 'Transport',    icon: 'car-outline',                color: '#ffe4e6', iconColor: '#be123c', onPress: () => nav.navigate('Transport') },
@@ -314,6 +349,8 @@ const SuperadminMenuStack = () => (
     <Stack.Screen name="Menu"          component={SuperadminMenu} />
     <Stack.Screen name="CasesTab"      component={SuperadminCasesStack} />
     <Stack.Screen name="PatientsTab"   component={PatientsStack} />
+    <Stack.Screen name="HouseholdsTab" component={HouseholdsStack} />
+    <Stack.Screen name="NutritionTab"  component={NutritionStack} />
     <Stack.Screen name="Referrals"     component={ReferralsStack} />
     <Stack.Screen name="Consultations" component={ConsultationsStack} />
     <Stack.Screen name="Transport"     component={TransportScreen} />

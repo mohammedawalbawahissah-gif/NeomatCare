@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } 
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { casesApi, referralsApi, patientsApi, consultationsApi, transportApi, getErrorMessage } from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
 import { Input, Button, Spinner, Badge, ErrorBanner, StatCard, EmptyState } from '../../components/ui';
@@ -34,6 +35,7 @@ export default function DashboardScreen({ navigation }) {
 
 // ─── Health Worker ──────────────────────────────────────────────────────────────
 function HealthWorkerDashboard({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [cases, setCases] = useState([]);
   const [referrals, setReferrals] = useState([]);
   const [patients, setPatients] = useState([]);
@@ -80,7 +82,7 @@ function HealthWorkerDashboard({ navigation }) {
   const overdueCount = followUps.filter((f) => f.dueDate && new Date(f.dueDate) < new Date()).length;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ padding: Spacing[4], paddingBottom: Spacing[10] }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} />}>
+    <ScrollView style={styles.container} contentContainerStyle={{ padding: Spacing[4], paddingTop: insets.top + Spacing[16], paddingBottom: Spacing[10] }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} />}>
       <Text style={styles.title}>Dashboard</Text>
       <Text style={styles.subtitle}>Your active cases and referrals</Text>
       <ErrorBanner message={error} onDismiss={() => setError('')} />
@@ -180,6 +182,7 @@ function FollowUpForm({ patients, onAdd }) {
 
 // ─── Specialist ───────────────────────────────────────────────────────────────
 function SpecialistDashboard({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -197,7 +200,7 @@ function SpecialistDashboard({ navigation }) {
   const inProgress = queue.filter((q) => q.status === 'active');
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ padding: Spacing[4], paddingBottom: Spacing[10] }}>
+    <ScrollView style={styles.container} contentContainerStyle={{ padding: Spacing[4], paddingTop: insets.top + Spacing[16], paddingBottom: Spacing[10] }}>
       <Text style={styles.title}>Consultation Queue</Text>
       <Text style={styles.subtitle}>Incoming consultation requests</Text>
       <ErrorBanner message={error} onDismiss={() => setError('')} />
@@ -226,6 +229,7 @@ function SpecialistDashboard({ navigation }) {
 
 // ─── Driver ───────────────────────────────────────────────────────────────────
 function DriverDashboard({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -239,7 +243,7 @@ function DriverDashboard({ navigation }) {
   const completed = requests.filter((r) => r.status === 'completed');
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ padding: Spacing[4], paddingBottom: Spacing[10] }}>
+    <ScrollView style={styles.container} contentContainerStyle={{ padding: Spacing[4], paddingTop: insets.top + Spacing[16], paddingBottom: Spacing[10] }}>
       <Text style={styles.title}>My Dispatches</Text>
       <Text style={styles.subtitle}>Your transport assignments</Text>
 
@@ -266,6 +270,7 @@ function DriverDashboard({ navigation }) {
 
 // ─── Facility Admin ─────────────────────────────────────────────────────────────
 function FacilityAdminDashboard({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [referrals, setReferrals] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -278,7 +283,7 @@ function FacilityAdminDashboard({ navigation }) {
   const incoming = referrals.filter((r) => ['PENDING', 'ACCEPTED'].includes(r.status));
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ padding: Spacing[4], paddingBottom: Spacing[10] }}>
+    <ScrollView style={styles.container} contentContainerStyle={{ padding: Spacing[4], paddingTop: insets.top + Spacing[16], paddingBottom: Spacing[10] }}>
       <Text style={styles.title}>Facility Dashboard</Text>
       <Text style={styles.subtitle}>Incoming referrals and capacity</Text>
 
@@ -306,6 +311,7 @@ function FacilityAdminDashboard({ navigation }) {
 
 // ─── Superadmin ─────────────────────────────────────────────────────────────────
 function SuperadminDashboard({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [cases, setCases] = useState([]);
   const [referrals, setReferrals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -323,7 +329,7 @@ function SuperadminDashboard({ navigation }) {
   if (loading) return <Spinner fullScreen />;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ padding: Spacing[4], paddingBottom: Spacing[10] }}>
+    <ScrollView style={styles.container} contentContainerStyle={{ padding: Spacing[4], paddingTop: insets.top + Spacing[16], paddingBottom: Spacing[10] }}>
       <Text style={styles.title}>System Overview</Text>
       <Text style={styles.subtitle}>Platform-wide activity</Text>
 

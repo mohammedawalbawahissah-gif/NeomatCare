@@ -87,7 +87,7 @@ export default function SpecialistProfileScreen() {
   if (notLinked) {
     return (
       <View style={styles.container}>
-        <View style={[styles.header, { paddingTop: insets.top + Spacing[5] }]}>
+        <View style={[styles.header, { paddingTop: insets.top + Spacing[16] }]}>
           <Text style={styles.headerTitle}>My Specialist Profile</Text>
         </View>
         <EmptyState
@@ -100,7 +100,7 @@ export default function SpecialistProfileScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + Spacing[5] }]}>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing[16] }]}>
         <View>
           <Text style={styles.headerTitle}>{profile?.user_name || 'My Specialist Profile'}</Text>
           <Text style={styles.headerSub}>{profile?.professional_pin}</Text>

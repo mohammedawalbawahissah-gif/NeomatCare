@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { casesApi, facilitiesApi, referralsApi, transportApi, consultationsApi, patientsApi } from '@/api/client'
 import { useOfflineQueue } from '@/contexts/OfflineQueueContext'
-import { QueueKinds, isQueueItemFailed } from '@/utils/offlineQueue'
+import { QueueKinds, isQueueItemFailed, isNetworkError } from '@/utils/offlineQueue'
 import { generateIdempotencyKey } from '@/utils/idempotencyKey'
 import { cachedFetch } from '@/utils/cachedFetch'
+import { scoreFacilitiesOffline } from '@/utils/referralEngineOffline'
 import VoiceEntryBar, { VoiceEntryTrigger } from '@/components/voice/VoiceEntryBar'
 import useVoiceEntry from '@/hooks/useVoiceEntry'
 import { StatusBadge, PageSpinner, EmptyState, DangerSignList, Spinner, FormField } from '@/components/ui'
@@ -58,32 +59,105 @@ const sectionStyle = { fontSize:'0.72rem', fontWeight:700, color:'#94a3b8', lett
 const gridStyle    = (cols) => ({ display:'grid', gridTemplateColumns:`repeat(${cols}, 1fr)`, gap:'12px', marginBottom:'12px' })
 
 // ── Referral Panel ────────────────────────────────────────────────────────────
-// Uses referralsApi.suggest(caseId) → { success, recommended_facility, alternatives, engine_version }
-// referralsApi.create({ emergency_case_id, receiving_facility_id, engine_recommendation_id, engine_version, override_reason })
+// Uses referralsApi.suggest(caseId, mode) → { success, recommended_facility, alternatives, engine_version, engine_mode }
+// referralsApi.create({ emergency_case_id, receiving_facility_id, engine_recommendation_id, engine_version, engine_mode, override_reason })
+//
+// Two recommendation modes a health worker can alternate between:
+//   - Rule-Based (default, auto-loaded — zero extra taps for the common case): the
+//     deterministic distance/capability scoring engine.
+//   - AI Analysis (opt-in second opinion): Claude re-ranks the same candidate
+//     facilities with plain-language reasoning. Only offered while online — it
+//     always falls back to rule_based server-side anyway if it fails, but there's
+//     no point offering a mode that needs connectivity when we already know we
+//     don't have any.
+// If the initial (rule_based) fetch itself fails due to no connectivity, this
+// falls back to computing real ranked scores ON-DEVICE (utils/referralEngineOffline.js)
+// against the last-cached facility list, rather than just an unranked manual pick —
+// and AI Analysis is disabled in that state since it has no path to the server at all.
+// Manual selection (tapping any card) always works, in every mode.
 function ReferralPanel({ caseData, onDone, navigate }) {
-  const [recommended,   setRecommended]   = useState(null)
-  const [alternatives,  setAlternatives]  = useState([])
-  const [engineVersion, setEngineVersion] = useState('')
+  const [resultsByMode, setResultsByMode] = useState({ rule_based: null, ai: null })
+  const [mode,          setMode]          = useState('rule_based')
+  const [loadingMode,   setLoadingMode]   = useState('rule_based')
+  const [offlineMode,   setOfflineMode]   = useState(false)
   const [selected,      setSelected]      = useState(null)
   const [override,      setOverride]      = useState('')
-  const [loading,       setLoading]       = useState(true)
   const [creating,      setCreating]      = useState(false)
   const [error,         setError]         = useState('')
+  const [modeError,     setModeError]     = useState('')
 
-  useEffect(() => {
-    referralsApi.suggest(caseData.id)
-      .then(({ data }) => {
-        setRecommended(data.recommended_facility || null)
-        setAlternatives(data.alternatives || [])
-        setEngineVersion(data.engine_version || '')
-        if (data.recommended_facility) setSelected(data.recommended_facility)
-      })
-      .catch(() => setError('Could not load suggestions. Check your network and try again.'))
-      .finally(() => setLoading(false))
-  }, [caseData.id])
+  const current = resultsByMode[mode]
+  const allOptions = current ? [current.recommended, ...current.alternatives].filter(Boolean) : []
+  const needsOverride = selected && current?.recommended && selected.id !== current.recommended.id
 
-  const allOptions = [recommended, ...alternatives].filter(Boolean)
-  const needsOverride = selected && recommended && selected.id !== recommended.id
+  async function loadOfflineFallback() {
+    try {
+      const { data } = await cachedFetch('facilities_list', () => facilitiesApi.list().then(r => r.data))
+      const facilities = Array.isArray(data) ? data : (data.results || [])
+      const offlineResult = scoreFacilitiesOffline(
+        {
+          dangerSigns: caseData.danger_signs || [],
+          referringLat: caseData.referring_facility_lat,
+          referringLng: caseData.referring_facility_lng,
+        },
+        facilities.filter(f => f.is_active !== false),
+      )
+      setResultsByMode(prev => ({
+        ...prev,
+        rule_based: {
+          recommended: offlineResult.recommendedFacility,
+          alternatives: offlineResult.alternatives,
+          engineVersion: offlineResult.engineVersion,
+          engineMode: 'offline_rule_based',
+        },
+      }))
+      setOfflineMode(true)
+      setSelected(offlineResult.recommendedFacility)
+    } catch {
+      setError('No connection, and no cached facility list available either — connect once to load it, then this works offline.')
+    }
+  }
+
+  async function loadMode(targetMode) {
+    setModeError(''); setLoadingMode(targetMode)
+    try {
+      const { data } = await referralsApi.suggest(caseData.id, targetMode)
+      const result = {
+        recommended: data.recommended_facility || null,
+        alternatives: data.alternatives || [],
+        engineVersion: data.engine_version || '',
+        engineMode: data.engine_mode || targetMode,
+      }
+      setResultsByMode(prev => ({ ...prev, [targetMode]: result }))
+      setMode(targetMode)
+      if (result.recommended) setSelected(result.recommended)
+    } catch (err) {
+      if (targetMode === 'rule_based' && isNetworkError(err)) {
+        await loadOfflineFallback()
+      } else if (targetMode === 'ai') {
+        setModeError('AI Analysis is unavailable right now — staying on Rule-Based.')
+      } else {
+        setError('Could not load suggestions. Check your network and try again.')
+      }
+    } finally {
+      setLoadingMode(null)
+    }
+  }
+
+  useEffect(() => { loadMode('rule_based') }, [caseData.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function switchMode(targetMode) {
+    if (targetMode === mode) return
+    setModeError('')
+    if (resultsByMode[targetMode]) {
+      setMode(targetMode)
+      const opts = [resultsByMode[targetMode].recommended, ...resultsByMode[targetMode].alternatives].filter(Boolean)
+      const stillThere = opts.find(o => o.id === selected?.id)
+      setSelected(stillThere || resultsByMode[targetMode].recommended)
+    } else {
+      loadMode(targetMode)
+    }
+  }
 
   const handleCreate = async () => {
     setError(''); setCreating(true)
@@ -91,8 +165,9 @@ function ReferralPanel({ caseData, onDone, navigate }) {
       const payload = {
         emergency_case_id:        caseData.id,
         receiving_facility_id:    selected.id,
-        engine_recommendation_id: recommended?.id || null,
-        engine_version:           engineVersion,
+        engine_recommendation_id: current?.recommended?.id || null,
+        engine_version:           current?.engineVersion || '',
+        engine_mode:              current?.engineMode || mode,
         override_reason:          override,
         idempotency_key:          generateIdempotencyKey(),
       }
@@ -105,16 +180,45 @@ function ReferralPanel({ caseData, onDone, navigate }) {
     }
   }
 
-  if (loading) return (
+  if (loadingMode === 'rule_based' && !current) return (
     <div style={{display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'48px 0', gap:'12px'}}>
       <Spinner size={28} />
-      <p style={{fontSize:'0.875rem', color:'#64748b'}}>Analysing case with AI engine…</p>
+      <p style={{fontSize:'0.875rem', color:'#64748b'}}>Finding matching facilities…</p>
     </div>
   )
 
   return (
     <div style={{display:'flex', flexDirection:'column', gap:'16px'}}>
       {error && <div style={{background:'#fff4f2', border:'1px solid #ffd0c8', borderRadius:'8px', padding:'10px 14px', color:'#c02812', fontSize:'0.85rem'}}>{error}</div>}
+
+      {/* Recommendation method toggle */}
+      <div>
+        <div style={{display:'flex', gap:'8px'}}>
+          <button type="button" onClick={() => switchMode('rule_based')}
+            style={{flex:1, padding:'9px', borderRadius:'8px', fontSize:'0.8rem', fontWeight:600, cursor:'pointer',
+              border: mode==='rule_based' ? '2px solid #207652' : '1px solid #e2e8f0',
+              background: mode==='rule_based' ? '#f0faf5' : 'white', color: mode==='rule_based' ? '#207652' : '#64748b'}}>
+            ⚙️ Rule-Based
+          </button>
+          <button type="button" onClick={() => switchMode('ai')} disabled={offlineMode || loadingMode === 'ai'}
+            title={offlineMode ? 'Requires a connection' : ''}
+            style={{flex:1, padding:'9px', borderRadius:'8px', fontSize:'0.8rem', fontWeight:600,
+              cursor: offlineMode ? 'not-allowed' : 'pointer',
+              border: mode==='ai' ? '2px solid #207652' : '1px solid #e2e8f0',
+              background: mode==='ai' ? '#f0faf5' : (offlineMode ? '#f8fafc' : 'white'),
+              color: offlineMode ? '#cbd5e1' : (mode==='ai' ? '#207652' : '#64748b'), opacity: offlineMode ? 0.7 : 1}}>
+            {loadingMode === 'ai' ? <Spinner size={12} /> : '✨ AI Analysis'}
+          </button>
+        </div>
+        {offlineMode && <p style={{fontSize:'0.72rem', color:'#94a3b8', margin:'6px 0 0'}}>No connection — AI Analysis needs one. Showing rule-based results computed offline on this device.</p>}
+        {modeError && <p style={{fontSize:'0.72rem', color:'#c02812', margin:'6px 0 0'}}>{modeError}</p>}
+      </div>
+
+      {offlineMode && (
+        <div style={{background:'#fffbeb', border:'1px solid #fde68a', borderRadius:'8px', padding:'8px 12px', fontSize:'0.75rem', color:'#92400e'}}>
+          Computed offline on this device — will still create the referral, queued for sync (see Section on offline mode).
+        </div>
+      )}
 
       <div style={{display:'flex', flexDirection:'column', gap:'8px'}}>
         {allOptions.map((s, i) => (
@@ -139,10 +243,13 @@ function ReferralPanel({ caseData, onDone, navigate }) {
                       <MapPin size={10}/>{s.distance_km?.toFixed(1)} km
                     </span>
                   )}
-                  {s.composite_score != null && (
-                    <span style={{fontSize:'0.75rem', fontWeight:600, color:'#207652'}}>Score: {Math.round((s.composite_score||0)*100)}%</span>
+                  {s.score != null && (
+                    <span style={{fontSize:'0.75rem', fontWeight:600, color:'#207652'}}>Score: {Math.round(s.score)}</span>
                   )}
                 </div>
+                {mode === 'ai' && s.ai_rationale && (
+                  <p style={{fontSize:'0.78rem', color:'#475569', margin:'8px 0 0 28px', lineHeight:1.4, fontStyle:'italic'}}>“{s.ai_rationale}”</p>
+                )}
               </div>
             </div>
           </button>
@@ -150,7 +257,7 @@ function ReferralPanel({ caseData, onDone, navigate }) {
         {allOptions.length === 0 && !error && (
           <div style={{textAlign:'center', padding:'32px 0', background:'#f8fafc', borderRadius:'12px'}}>
             <p style={{fontSize:'1.5rem', marginBottom:'8px'}}>🏥</p>
-            <p style={{fontSize:'0.875rem', fontWeight:600, color:'#475569', marginBottom:'4px'}}>No AI suggestions available</p>
+            <p style={{fontSize:'0.875rem', fontWeight:600, color:'#475569', marginBottom:'4px'}}>No suggestions available</p>
             <p style={{fontSize:'0.75rem', color:'#94a3b8', maxWidth:'280px', margin:'0 auto'}}>
               No suitable facilities found. You can still create the referral manually from the case detail page.
             </p>

@@ -9,7 +9,8 @@ import { useOfflineQueue } from '../../contexts/OfflineQueueContext';
 import { QueueKinds, isNetworkError } from '../../utils/offlineQueue';
 import { generateIdempotencyKey } from '../../utils/idempotencyKey';
 import { cachedFetch } from '../../utils/cachedFetch';
-import { triggerAutoReferralSms } from '../../utils/smsReferralFallback';
+import { triggerAutoReferralSms, triggerEmergencyReferralSms } from '../../utils/smsReferralFallback';
+import { scoreFacilitiesOffline } from '../../utils/referralEngineOffline';
 import { Input, Select, Button, ErrorBanner, Spinner, Badge } from '../../components/ui';
 import { DangerSignPicker } from '../../components/ui/dangerSigns';
 import VoiceEntryBar, { VoiceEntryTrigger } from '../../components/voice/VoiceEntryBar';
@@ -398,53 +399,94 @@ function BackWrap({ onBack, children }) {
 }
 
 function ReferralPanel({ caseData, onDone }) {
-  const [recommended, setRecommended] = useState(null);
-  const [alternatives, setAlternatives] = useState([]);
-  const [engineVersion, setEngineVersion] = useState('');
+  const [resultsByMode, setResultsByMode] = useState({ rule_based: null, ai: null });
+  const [mode, setMode] = useState('rule_based');
+  const [loadingMode, setLoadingMode] = useState('rule_based');
+  const [offlineMode, setOfflineMode] = useState(false);
   const [selected, setSelected] = useState(null);
   const [override, setOverride] = useState('');
-  const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
-  // Set when the AI suggestion call itself couldn't reach the server —
-  // switches the panel from "ranked AI suggestions" to "pick manually from
-  // the last-cached facility list", since there's no engine to rank with.
-  const [offlineFallback, setOfflineFallback] = useState(false);
-  const [manualFacilities, setManualFacilities] = useState([]);
+  const [modeError, setModeError] = useState('');
   const [smsNotice, setSmsNotice] = useState('');
   const { submitOrQueue } = useOfflineQueue();
 
-  useEffect(() => {
-    referralsApi.suggest(caseData.id)
-      .then(({ data }) => {
-        setRecommended(data.recommended_facility || null);
-        setAlternatives(data.alternatives || []);
-        setEngineVersion(data.engine_version || '');
-        if (data.recommended_facility) setSelected(data.recommended_facility);
-      })
-      .catch((err) => {
-        if (isNetworkError(err)) {
-          // No connectivity — fall back to the facility list cached by the
-          // case-create step (same 'facilities_list' cache key), so the
-          // health worker can still pick a facility and create the
-          // referral manually. This is the gap that used to leave this
-          // screen stuck at "Analysing case with AI engine…" forever with
-          // no way forward when offline.
-          setOfflineFallback(true);
-          cachedFetch('facilities_list', () => facilitiesApi.list().then((r) => r.data))
-            .then(({ data }) => setManualFacilities(Array.isArray(data) ? data : (data.results || [])))
-            .catch(() => setError('No cached facility list available either — connect once to load it, then this will work offline.'));
-        } else {
-          setError('Could not load suggestions. Check your network and try again.');
-        }
-      })
-      .finally(() => setLoading(false));
-  }, [caseData.id]);
+  const current = resultsByMode[mode];
+  const allOptions = current ? [current.recommended, ...current.alternatives].filter(Boolean) : [];
+  const needsOverride = selected && current?.recommended && selected.id !== current.recommended.id;
 
-  const allOptions = offlineFallback
-    ? manualFacilities
-    : [recommended, ...alternatives].filter(Boolean);
-  const needsOverride = selected && recommended && selected.id !== recommended.id;
+  async function loadOfflineFallback() {
+    try {
+      const { data } = await cachedFetch('facilities_list', () => facilitiesApi.list().then((r) => r.data));
+      const facilities = Array.isArray(data) ? data : (data.results || []);
+      const offlineResult = scoreFacilitiesOffline(
+        {
+          dangerSigns: caseData.danger_signs || [],
+          referringLat: caseData.referring_facility_lat,
+          referringLng: caseData.referring_facility_lng,
+        },
+        facilities.filter((f) => f.is_active !== false),
+      );
+      setResultsByMode((prev) => ({
+        ...prev,
+        rule_based: {
+          recommended: offlineResult.recommendedFacility,
+          alternatives: offlineResult.alternatives,
+          engineVersion: offlineResult.engineVersion,
+          engineMode: 'offline_rule_based',
+        },
+      }));
+      setOfflineMode(true);
+      setSelected(offlineResult.recommendedFacility);
+    } catch {
+      setError('No cached facility list available either — connect once to load it, then this will work offline.');
+    }
+  }
+
+  async function loadMode(targetMode) {
+    setModeError(''); setLoadingMode(targetMode);
+    try {
+      const { data } = await referralsApi.suggest(caseData.id, targetMode);
+      const result = {
+        recommended: data.recommended_facility || null,
+        alternatives: data.alternatives || [],
+        engineVersion: data.engine_version || '',
+        engineMode: data.engine_mode || targetMode,
+      };
+      setResultsByMode((prev) => ({ ...prev, [targetMode]: result }));
+      setMode(targetMode);
+      if (result.recommended) setSelected(result.recommended);
+    } catch (err) {
+      if (targetMode === 'rule_based' && isNetworkError(err)) {
+        // No connectivity — compute a real ranked recommendation on-device
+        // instead of only offering an unranked manual pick. This is the
+        // gap that used to leave this screen stuck with no way forward
+        // when offline beyond picking blind from the cached list.
+        await loadOfflineFallback();
+      } else if (targetMode === 'ai') {
+        setModeError('AI Analysis is unavailable right now — staying on Rule-Based.');
+      } else {
+        setError('Could not load suggestions. Check your network and try again.');
+      }
+    } finally {
+      setLoadingMode(null);
+    }
+  }
+
+  useEffect(() => { loadMode('rule_based'); }, [caseData.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function switchMode(targetMode) {
+    if (targetMode === mode) return;
+    setModeError('');
+    if (resultsByMode[targetMode]) {
+      setMode(targetMode);
+      const opts = [resultsByMode[targetMode].recommended, ...resultsByMode[targetMode].alternatives].filter(Boolean);
+      const stillThere = opts.find((o) => o.id === selected?.id);
+      setSelected(stillThere || resultsByMode[targetMode].recommended);
+    } else {
+      loadMode(targetMode);
+    }
+  }
 
   const handleCreate = async () => {
     setError(''); setCreating(true); setSmsNotice('');
@@ -455,30 +497,35 @@ function ReferralPanel({ caseData, onDone }) {
         data: {
           emergency_case_id: caseData.id,
           receiving_facility_id: selected.id,
-          engine_recommendation_id: recommended?.id || null,
-          engine_version: engineVersion,
+          engine_recommendation_id: current?.recommended?.id || null,
+          engine_version: current?.engineVersion || '',
+          engine_mode: current?.engineMode || mode,
           override_reason: override,
           idempotency_key: generateIdempotencyKey(),
         },
         meta: { kind: QueueKinds.REFERRAL_CREATE, label: `${caseData.patient?.patient_name || 'Referral'} → ${selected.name}` },
       });
       if (result.queued) {
-        // This is the SMS side-channel (item 5 of the offline-first plan):
-        // the referral write is safely queued for sync, but that could sit
-        // for a while with no data connectivity — so also fire an SMS
-        // right now, over the phone's own SMS radio, which reaches much
-        // further than mobile data in this region. One tap to send; never
-        // blocks the rest of this flow.
-        //
-        // Primary: gateway-addressed, auto-creates a real referral
-        // server-side the moment it's received (sms_inbound_service.py) —
-        // same automation level as the USSD fallback, and the receiving
-        // facility gets notified automatically once that referral exists.
+        // SMS side-channel (item 5 of the offline-first plan). Primary:
+        // gateway-addressed, auto-creates a real referral server-side the
+        // moment it's received. Secondary: if the selected facility's own
+        // phone number happens to be known, also send it a direct, purely
+        // informal heads-up — belt and braces, never blocks the flow.
         const autoSent = await triggerAutoReferralSms({
           age: caseData.patient?.age,
           dangerSigns: caseData.danger_signs,
           patientName: caseData.patient?.patient_name,
         });
+        if (selected.phone) {
+          triggerEmergencyReferralSms({
+            facilityPhone: selected.phone,
+            patientName: caseData.patient?.patient_name,
+            age: caseData.patient?.age,
+            dangerSigns: caseData.danger_signs,
+            referringFacilityName: caseData.referring_facility_name,
+            referenceId: result.item?.id,
+          }).catch(() => {});
+        }
         setSmsNotice(
           autoSent
             ? 'Saved offline. A referral SMS has been opened — please tap Send. This will create the referral automatically once received.'
@@ -492,30 +539,47 @@ function ReferralPanel({ caseData, onDone }) {
     }
   };
 
-  if (loading) return <View style={{ paddingVertical: Spacing[8], alignItems: 'center', gap: Spacing[2] }}><Spinner /><Text style={styles.loadingText}>Analysing case with AI engine…</Text></View>;
+  if (loadingMode === 'rule_based' && !current) return <View style={{ paddingVertical: Spacing[8], alignItems: 'center', gap: Spacing[2] }}><Spinner /><Text style={styles.loadingText}>Finding matching facilities…</Text></View>;
 
   return (
     <View>
       <ErrorBanner message={error} onDismiss={() => setError('')} />
       {!!smsNotice && <Text style={styles.smsNotice}>{smsNotice}</Text>}
-      {offlineFallback && (
-        <Text style={styles.cacheNotice}>
-          No connection — showing your last-cached facility list. Pick one manually; the AI recommendation isn't available offline.
-        </Text>
-      )}
+
+      <View style={styles.modeToggleRow}>
+        <TouchableOpacity
+          style={[styles.modeToggleBtn, mode === 'rule_based' && styles.modeToggleBtnActive]}
+          onPress={() => switchMode('rule_based')}
+        >
+          <Text style={[styles.modeToggleLabel, mode === 'rule_based' && styles.modeToggleLabelActive]}>⚙️ Rule-Based</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.modeToggleBtn, mode === 'ai' && styles.modeToggleBtnActive, offlineMode && styles.modeToggleBtnDisabled]}
+          onPress={() => switchMode('ai')}
+          disabled={offlineMode || loadingMode === 'ai'}
+        >
+          {loadingMode === 'ai'
+            ? <Spinner size="small" />
+            : <Text style={[styles.modeToggleLabel, mode === 'ai' && styles.modeToggleLabelActive, offlineMode && styles.modeToggleLabelDisabled]}>✨ AI Analysis</Text>}
+        </TouchableOpacity>
+      </View>
+      {offlineMode && <Text style={styles.cacheNotice}>No connection — AI Analysis needs one. Showing rule-based results computed offline on this device.</Text>}
+      {!!modeError && <Text style={styles.cacheNotice}>{modeError}</Text>}
+
       {allOptions.map((s, i) => (
         <TouchableOpacity key={s.id} style={[styles.facilityCard, selected?.id === s.id && styles.facilityCardActive]} onPress={() => setSelected(s)}>
           <View style={[styles.rankBadge, i === 0 && styles.rankBadgeTop]}><Text style={[styles.rankText, i === 0 && styles.rankTextTop]}>{i + 1}</Text></View>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <Text style={styles.facilityName}>{s.name}</Text>
-              {!offlineFallback && i === 0 && <Badge label="Recommended" variant="success" />}
+              {i === 0 && <Badge label="Recommended" variant="success" />}
               {!!s.level_display && <Badge label={s.level_display} variant="default" />}
             </View>
             <View style={{ flexDirection: 'row', gap: Spacing[3], marginTop: 4 }}>
               {s.distance_km != null && <Text style={styles.facilityMeta}>{s.distance_km.toFixed(1)} km</Text>}
-              {s.score != null && <Text style={styles.facilityScore}>Match: {Math.round((s.score || 0) * 100)}%</Text>}
+              {s.score != null && <Text style={styles.facilityScore}>Score: {Math.round(s.score)}</Text>}
             </View>
+            {mode === 'ai' && !!s.ai_rationale && <Text style={styles.aiRationale}>“{s.ai_rationale}”</Text>}
           </View>
         </TouchableOpacity>
       ))}
@@ -633,6 +697,14 @@ const styles = StyleSheet.create({
   hintBox: { backgroundColor: Colors.primaryLight, borderRadius: Radius.md, padding: Spacing[3], marginBottom: Spacing[3] },
   cacheNotice: { fontSize: Typography.xs, color: Colors.warningDark, marginBottom: Spacing[2] },
   smsNotice: { fontSize: Typography.xs, fontWeight: Typography.semibold, color: Colors.primaryDark, backgroundColor: Colors.primaryLight, borderRadius: Radius.md, padding: Spacing[2], marginBottom: Spacing[2] },
+  modeToggleRow: { flexDirection: 'row', gap: Spacing[2], marginBottom: Spacing[2] },
+  modeToggleBtn: { flex: 1, paddingVertical: Spacing[2], borderRadius: Radius.md, borderWidth: 1.5, borderColor: Colors.gray200, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' },
+  modeToggleBtnActive: { borderColor: Colors.primary, backgroundColor: Colors.primaryLight },
+  modeToggleBtnDisabled: { backgroundColor: Colors.gray50, opacity: 0.7 },
+  modeToggleLabel: { fontSize: Typography.sm, fontWeight: Typography.semibold, color: Colors.gray500 },
+  modeToggleLabelActive: { color: Colors.primaryDark },
+  modeToggleLabelDisabled: { color: Colors.gray300 },
+  aiRationale: { fontSize: Typography.xs, color: Colors.gray500, fontStyle: 'italic', marginTop: 6, lineHeight: 16 },
   hintTitle: { fontSize: Typography.sm, fontWeight: Typography.semibold, color: Colors.primaryDark },
   hintBody: { fontSize: Typography.xs, color: Colors.primaryDark, marginTop: 2 },
   searchRow: { flexDirection: 'row', alignItems: 'flex-start' },

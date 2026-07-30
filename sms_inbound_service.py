@@ -194,6 +194,7 @@ def _create_sms_referral(worker, age: int, free_text: str, danger_signs: list, m
             theatre_available=f.theatre_available,
             blood_bank=f.blood_bank,
             on_call_specialist=f.on_call_specialist,
+            phone=f.phone or "",
         )
         for f in facilities
     ]

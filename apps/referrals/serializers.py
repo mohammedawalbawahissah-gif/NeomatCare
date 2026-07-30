@@ -72,6 +72,10 @@ class ReferralCreateSerializer(serializers.Serializer):
     receiving_facility_id  = serializers.UUIDField()
     engine_recommendation_id = serializers.UUIDField(required=False, allow_null=True)
     engine_version         = serializers.CharField(required=False, allow_blank=True)
+    # "rule_based" / "ai" / "ai_fallback_rule_based" / "offline_rule_based" —
+    # whichever mode actually produced engine_recommendation_id. Optional
+    # and blank-tolerant so older clients that don't send it still work.
+    engine_mode            = serializers.CharField(required=False, allow_blank=True)
     override_reason        = serializers.CharField(required=False, allow_blank=True)
 
     # Client-generated (e.g. crypto.randomUUID()), one per form submission —
@@ -121,6 +125,14 @@ class ReferralCreateSerializer(serializers.Serializer):
             )
         attrs["receiving_facility"] = receiving
 
+        # Unrecognised engine_mode values are dropped rather than rejected —
+        # this is an audit/analytics field, not something that should be
+        # able to block referral creation if an older or newer client sends
+        # an unexpected value.
+        valid_engine_modes = {c[0] for c in Referral.ENGINE_MODE_CHOICES}
+        if attrs.get("engine_mode") not in valid_engine_modes:
+            attrs["engine_mode"] = ""
+
         # Enforce override reason when engine suggestion was ignored
         engine_rec_id = attrs.get("engine_recommendation_id")
         if (
@@ -160,6 +172,7 @@ class ReferralCreateSerializer(serializers.Serializer):
             receiving_facility    = validated_data["receiving_facility"],
             engine_recommendation = engine_rec,
             engine_version        = validated_data.get("engine_version", ""),
+            engine_mode           = validated_data.get("engine_mode", ""),
             override_reason       = validated_data.get("override_reason", ""),
             status                = "DRAFT",
             created_by            = request.user,

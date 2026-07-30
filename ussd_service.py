@@ -198,6 +198,7 @@ def _create_ussd_referral(worker, age: int, danger_sign_code: str) -> dict | Non
             theatre_available=f.theatre_available,
             blood_bank=f.blood_bank,
             on_call_specialist=f.on_call_specialist,
+            phone=f.phone or "",
         )
         for f in facilities
     ]

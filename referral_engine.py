@@ -73,6 +73,13 @@ class FacilitySnapshot:
     theatre_available: bool = False
     blood_bank: bool = False
     on_call_specialist: bool = False
+    # Not used by the scoring logic — carried through purely so API
+    # responses built from a FacilitySuggestion (see suggestion_to_dict)
+    # can expose it, same as the plain facility-list endpoint does. Needed
+    # by the mobile app's offline SMS-referral side-channel, which has to
+    # know a receiving facility's number even when it came from the AI
+    # suggestion rather than the manual/cached facility list.
+    phone: str = ""
 
 
 @dataclass
@@ -238,6 +245,7 @@ def suggestion_to_dict(result):
                 "facility_id":              s.facility.id,
                 "facility_name":            s.facility.name,
                 "facility_level":           s.facility.level,
+                "facility_phone":           s.facility.phone,
                 "score":                    s.score,
                 "capability_score":         s.capability_score,
                 "distance_km":              s.distance_km,

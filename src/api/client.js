@@ -229,7 +229,7 @@ export const casesApi = {
 
 // ─── Referrals ─────────────────────────────────────────────────────────────────
 export const referralsApi = {
-  suggest:      (emergencyCaseId)       => apiClient.post('/api/referrals/suggest/', { emergency_case_id: emergencyCaseId }),
+  suggest:      (emergencyCaseId, mode = 'rule_based') => apiClient.post('/api/referrals/suggest/', { emergency_case_id: emergencyCaseId, mode }),
   create:       (data)                  => apiClient.post('/api/referrals/create/', data),
   list:         (params)                => apiClient.get('/api/referrals/', { params }),
   detail:       (id)                    => apiClient.get(`/api/referrals/${id}/`),

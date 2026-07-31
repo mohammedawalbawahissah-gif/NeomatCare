@@ -321,6 +321,12 @@ class EmergencyCaseDetailSerializer(serializers.ModelSerializer):
     triage_notes            = TriageNoteSerializer(many=True, read_only=True)
     created_by_name         = serializers.CharField(source="created_by.name", read_only=True)
     referring_facility_name = serializers.CharField(source="referring_facility.name", read_only=True)
+    # Needed by the frontend's on-device offline referral-scoring engine
+    # (utils/referralEngineOffline.js) to compute distance when the server
+    # can't be reached — without these the on-device engine has no origin
+    # point to measure from.
+    referring_facility_lat  = serializers.FloatField(source="referring_facility.latitude", read_only=True, allow_null=True)
+    referring_facility_lng  = serializers.FloatField(source="referring_facility.longitude", read_only=True, allow_null=True)
 
     class Meta:
         model  = EmergencyCase
@@ -331,7 +337,8 @@ class EmergencyCaseDetailSerializer(serializers.ModelSerializer):
             "vital_signs", "fetal_heart_rate", "membranes_status",
             "obstetric_history",
             "maternal_outcome", "neonatal_outcome", "outcome_notes",
-            "referring_facility_name", "created_by_name",
+            "referring_facility_name", "referring_facility_lat", "referring_facility_lng",
+            "created_by_name",
             "triage_notes", "created_at",
         ]
 

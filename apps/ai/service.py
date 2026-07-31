@@ -12,6 +12,8 @@ Wraps the Anthropic API and provides typed helpers for each AI capability:
   6. chat                 — role-aware conversational assistant
   7. local_food_suggestion — turn the curated local-food table into a
                               personalised, locally-worded nutrition tip
+  8. facility_recommendation — AI second-opinion ranking over a pre-vetted
+                                candidate facility list, for referral creation
 
 All functions are synchronous (Django-friendly). Each raises AIServiceError on failure.
 """
@@ -411,3 +413,92 @@ def local_food_suggestion(curated_tips: list, region: str = "", town: str = "", 
         + "\n\nWrite the suggestion now."
     )
     return _call(LOCAL_FOOD_SYSTEM, prompt, max_tokens=200).strip()
+
+
+# ── 8. Facility Recommendation (AI referral analysis) ───────────────────────
+#
+# Alternative to the deterministic scoring in referral_engine.py, offered as
+# an opt-in second opinion during referral creation (see
+# apps/referrals/views.py ReferralSuggestView, mode="ai"). Deliberately
+# grounded: Claude is given a pre-filtered candidate list with real,
+# already-computed facts (distance, level, capability match, capacity) and
+# is only allowed to RANK and EXPLAIN from that list — it cannot invent a
+# facility, a distance, or a capability that wasn't provided. The caller
+# (ReferralSuggestView) re-validates every returned facility_id against the
+# candidate set and re-attaches the real computed numbers rather than
+# trusting anything the model echoes back, so a hallucinated ID or number
+# can't reach the frontend. On any failure the caller falls back to the
+# rule-based result — this function never gets to be a single point of
+# failure for an emergency referral.
+
+FACILITY_RECOMMENDATION_SYSTEM = """You are a clinical referral-matching assistant for a maternal and \
+neonatal emergency referral system in Northern Ghana. You are given one emergency case's danger signs \
+and a pre-vetted list of candidate receiving facilities, each with real data already computed for you \
+(distance, facility level, which required services it has and is missing, bed/theatre/blood-bank/on-call \
+availability, and a baseline rule-based score).
+
+Your job is to rank up to 3 of these candidates for this specific case and explain your reasoning in \
+plain language a health worker can quickly read under time pressure — not to recompute the numbers.
+
+Return ONLY valid JSON, no markdown fences, no prose outside the JSON:
+{
+  "recommendations": [
+    {"facility_id": "<must be one of the candidate ids given to you, exactly as given>",
+     "rationale": "<1-2 plain-language sentences on why this facility fits this case, referencing its actual capabilities/distance>"}
+  ],
+  "overall_confidence": "HIGH" | "MEDIUM" | "LOW"
+}
+
+Rules:
+- facility_id values MUST come only from the candidate list you were given — never invent one.
+- Never state a distance, capability, or bed count that wasn't given to you in the candidate data.
+- Order recommendations best-fit first. Prefer facilities that meet more of the required services, then \
+weigh distance/travel time — a slightly further facility with the needed capability is usually better \
+than a closer one missing something critical, unless the case is time-critical enough that distance \
+should dominate (use clinical judgement on the danger signs given).
+- If none of the candidates are a reasonable fit, return an empty recommendations list rather than \
+forcing a bad match.
+- Keep each rationale short — this is read in an emergency, not a report."""
+
+
+def facility_recommendation(danger_signs: list, patient_context: dict, candidates: list) -> dict:
+    """
+    danger_signs: list of danger-sign codes on the case (same codes as
+        referral_engine.DangerSign).
+    patient_context: small dict of non-identifying context that might
+        affect urgency/fit, e.g. {"patient_type": "maternal", "age": 29}.
+    candidates: list of dicts, one per candidate facility, already computed
+        by referral_engine — expected keys: facility_id, facility_name,
+        facility_level, distance_km, estimated_travel_minutes,
+        capability_score, matched_services, missing_services,
+        icu_beds_available, nicu_cots_available, theatre_available,
+        blood_bank, on_call_specialist, rule_based_score.
+
+    Returns the parsed dict matching FACILITY_RECOMMENDATION_SYSTEM's
+    schema. Raises AIServiceError on any failure (API error, invalid JSON,
+    or zero valid candidate ids in the response) — callers must catch this
+    and fall back to the rule-based engine result.
+    """
+    if not candidates:
+        raise AIServiceError("No candidate facilities provided to analyse.")
+
+    user_msg = (
+        f"Danger signs on this case: {json.dumps(danger_signs)}\n"
+        f"Patient context: {json.dumps(patient_context or {})}\n"
+        f"Candidate facilities:\n{json.dumps(candidates, indent=2)}\n\n"
+        f"Rank up to 3 of these candidates now."
+    )
+    result = _call_json(FACILITY_RECOMMENDATION_SYSTEM, user_msg, max_tokens=900)
+
+    if not isinstance(result, dict) or "recommendations" not in result:
+        raise AIServiceError("AI response missing 'recommendations'.")
+
+    valid_ids = {c["facility_id"] for c in candidates}
+    result["recommendations"] = [
+        r for r in result["recommendations"]
+        if isinstance(r, dict) and r.get("facility_id") in valid_ids
+    ]
+    if not result["recommendations"]:
+        raise AIServiceError("AI returned no valid candidate facility ids.")
+
+    return result

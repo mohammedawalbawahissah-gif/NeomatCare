@@ -285,3 +285,35 @@ XIRSYS_SECRET  = env("XIRSYS_SECRET", default="")
 XIRSYS_CHANNEL = env("XIRSYS_CHANNEL", default="")
 TWILIO_ACCOUNT_SID = env("TWILIO_ACCOUNT_SID", default="")
 TWILIO_AUTH_TOKEN  = env("TWILIO_AUTH_TOKEN", default="")
+
+# ── Cache (Redis — required in production for multi-step USSD sessions) ─────
+# apps/referrals/ussd_session.py stores in-progress USSD session state here
+# (which screen a health worker is on, what they've entered so far) keyed by
+# Africa's Talking's sessionId, between one HTTP callback and the next.
+#
+# Gunicorn runs multiple worker PROCESSES (see Procfile: --workers 2). The
+# default LocMemCache is PER-PROCESS — a session started on worker A and
+# continued on worker B (Africa's Talking has no reason to hit the same
+# process twice) would silently lose its state, breaking the session
+# roughly half the time with 2 workers. This is why REDIS_URL matters here
+# specifically, even though the rest of the app has gotten away without a
+# shared cache so far.
+#
+# Set REDIS_URL in production (e.g. add a Redis service on Railway and
+# reference its REDIS_URL). Without it, this falls back to LocMemCache,
+# which is fine for local development (`manage.py runserver` is one
+# process) but NOT safe for a multi-worker deployment.
+REDIS_URL = env("REDIS_URL", default="")
+if REDIS_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+        }
+    }
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        }
+    }

@@ -18,16 +18,26 @@ brief signal window.
 Message format (case-insensitive, keyword order doesn't matter beyond
 "REFER <age> <rest>"):
     REFER <age> <free text describing the danger sign(s)>
-Example:
+Example (hand-typed by a health worker with no app at all):
     "REFER 28 heavy bleeding after delivery, weak and dizzy"
 
-The free-text part is best-effort keyword-matched against the same
-curated DANGER_SIGN_MENU ussd_service.py uses (kept identical rather than
-duplicated with different codes, so both channels route through the
-exact same referral_engine scoring). An unmatched message still creates
-a referral — DangerSign detection here is a convenience for engine
-routing, not a requirement; a health worker completes full details in
-the app once connectivity returns, same as the USSD path.
+The app additionally composes optional tags into <rest> — HID:<hospital
+id>, NAME:<patient name>, REF:<local queue reference> — anywhere in the
+free text, order-independent (see mobile/src/utils/smsReferralFallback.js
+buildAutoReferralSmsBody). A hand-typed message never includes these and
+doesn't need to; they're additive and backward compatible. HID, when
+present and matching a real patient, links this referral to that
+patient's existing record instead of creating a duplicate — same fix,
+same reasoning, as ussd_service.py's Hospital ID lookup.
+
+The free-text part (tags stripped out) is best-effort keyword-matched
+against the same curated DANGER_SIGN_MENU ussd_service.py uses (kept
+identical rather than duplicated with different codes, so both channels
+route through the exact same referral_engine scoring). An unmatched
+message still creates a referral — DangerSign detection here is a
+convenience for engine routing, not a requirement; a health worker
+completes full details in the app once connectivity returns, same as the
+USSD path.
 
 Place this file at the project root (next to ussd_service.py,
 sms_service.py, referral_engine.py). Wire the URL in config/urls.py:
@@ -57,6 +67,35 @@ DANGER_SIGN_KEYWORDS = [
 ]
 
 REFER_PATTERN = re.compile(r"^\s*REFER\s+(\d{1,3})\s+(.+)$", re.IGNORECASE | re.DOTALL)
+
+# App-composed optional tags, order-independent within the free-text
+# portion. NAME must stop at the next recognised tag (or end of string)
+# since a name can contain spaces — HID and REF can't (Hospital IDs and
+# local queue ids are both single tokens), so those are simpler \S+ matches.
+_HID_TAG  = re.compile(r"\bHID:(\S+)", re.IGNORECASE)
+_REF_TAG  = re.compile(r"\bREF:(\S+)", re.IGNORECASE)
+_NAME_TAG = re.compile(r"\bNAME:(.+?)(?=\s+HID:|\s+REF:|\s+NAME:|$)", re.IGNORECASE | re.DOTALL)
+
+
+def _extract_tags(free_text: str) -> tuple:
+    """Returns (hospital_id, patient_name, client_ref, remaining_text) —
+    remaining_text has all three tags stripped out, safe to pass to
+    _match_danger_signs() without a tag value (e.g. a name) accidentally
+    keyword-matching as a danger sign."""
+    hid_match  = _HID_TAG.search(free_text)
+    name_match = _NAME_TAG.search(free_text)
+    ref_match  = _REF_TAG.search(free_text)
+
+    remaining = free_text
+    for pattern in (_HID_TAG, _NAME_TAG, _REF_TAG):
+        remaining = pattern.sub("", remaining)
+
+    return (
+        hid_match.group(1).strip() if hid_match else None,
+        name_match.group(1).strip() if name_match else None,
+        ref_match.group(1).strip() if ref_match else None,
+        remaining.strip(),
+    )
 
 
 def _match_danger_signs(free_text: str) -> list:
@@ -117,10 +156,14 @@ def _handle(sender_phone: str, text: str, message_id: str) -> dict:
     if not (0 < age < 120):
         return {"status": "invalid_age", "detail": "Age out of range."}
 
-    free_text = match.group(2).strip()
+    raw_rest = match.group(2).strip()
+    hospital_id, patient_name, client_ref, free_text = _extract_tags(raw_rest)
     danger_signs = _match_danger_signs(free_text)
 
-    result = _create_sms_referral(worker, age, free_text, danger_signs, message_id)
+    result = _create_sms_referral(
+        worker, age, free_text, danger_signs, message_id,
+        hospital_id=hospital_id, patient_name=patient_name, client_ref=client_ref,
+    )
     if not result:
         return {
             "status": "no_facility_routed",
@@ -135,16 +178,28 @@ def _handle(sender_phone: str, text: str, message_id: str) -> dict:
     }
 
 
-def _create_sms_referral(worker, age: int, free_text: str, danger_signs: list, message_id: str) -> dict | None:
+def _create_sms_referral(
+    worker, age: int, free_text: str, danger_signs: list, message_id: str,
+    hospital_id: str = None, patient_name: str = None, client_ref: str = None,
+) -> dict | None:
     """
-    Mirrors ussd_service._create_ussd_referral exactly — same minimal
-    Patient + EmergencyCase + Referral shape, same referral_engine
+    Mirrors ussd_service._create_ussd_referral's shape and posture closely
+    (existing-patient lookup via Hospital ID, same referral_engine
     routing, same DRAFT->PENDING transition to trigger the existing
-    signals.py SMS-notification pipeline. Kept as a near-duplicate rather
-    than a shared helper because the two channels' inputs differ just
-    enough (free-text complaint here vs a fixed label there) that a
-    shared function would need a branch for it anyway — this is more
-    readable side by side with ussd_service.py's version.
+    signals.py SMS-notification pipeline) — kept as a near-duplicate
+    rather than a shared helper because the two channels' inputs differ
+    just enough (free-text complaint here vs a fixed label there, and this
+    one has no interactive confirm step — see the module docstring on why
+    that tradeoff is acceptable for SMS) that a shared function would need
+    a branch for it anyway; this is more readable side by side with
+    ussd_service.py's version.
+
+    Unlike the USSD flow, there's no confirm-before-create step here — an
+    inbound SMS is a single fire-and-forget message, not a multi-screen
+    session, so this creates immediately on receipt. hospital_id looks up
+    an existing patient (falls back to creating a new one, tagged in the
+    case notes, if the id doesn't match anything — never hard-fails a
+    referral over a typo'd id).
 
     idempotency: uses the AT message id (when provided) to avoid a
     provider retry creating a second referral for the same SMS.
@@ -162,16 +217,30 @@ def _create_sms_referral(worker, age: int, free_text: str, danger_signs: list, m
             referral = existing.referral
             return {"facility_name": referral.receiving_facility.name, "ref_id": str(referral.id)[:8].upper()}
 
-    patient = Patient.objects.create(
-        patient_name="SMS Emergency Referral",
-        age=age,
-        patient_type="maternal",
-        wellness_type="maternal",
-    )
     complaint_tag = f" [sms:{message_id}]" if message_id else ""
+    client_ref_tag = f" [ref:{client_ref}]" if client_ref else ""
+
+    patient = None
+    hid_note = ""
+    if hospital_id:
+        patient = Patient.objects.filter(hospital_id__iexact=hospital_id).first()
+        if not patient:
+            hid_note = f" (Hospital ID '{hospital_id}' not found — created as new)"
+
+    if patient:
+        complaint = f"Referral initiated via SMS (offline channel) for existing patient: {free_text}{complaint_tag}{client_ref_tag}"
+    else:
+        patient = Patient.objects.create(
+            patient_name=patient_name or "SMS Emergency Referral",
+            age=age,
+            patient_type="maternal",
+            wellness_type="maternal",
+        )
+        complaint = f"Referral initiated via SMS (offline channel){hid_note}: {free_text}{complaint_tag}{client_ref_tag}"
+
     case = EmergencyCase.objects.create(
         patient=patient,
-        presenting_complaint=f"Referral initiated via SMS (offline channel): {free_text}{complaint_tag}",
+        presenting_complaint=complaint,
         danger_signs=danger_signs,
         referring_facility=worker.facility,
         created_by=worker,
@@ -194,6 +263,7 @@ def _create_sms_referral(worker, age: int, free_text: str, danger_signs: list, m
             theatre_available=f.theatre_available,
             blood_bank=f.blood_bank,
             on_call_specialist=f.on_call_specialist,
+            phone=f.phone or "",
         )
         for f in facilities
     ]
@@ -210,6 +280,7 @@ def _create_sms_referral(worker, age: int, free_text: str, danger_signs: list, m
         referring_facility=worker.facility,
         receiving_facility=receiving_facility,
         engine_version=result.engine_version,
+        engine_mode="rule_based",
         status="DRAFT",
         created_by=worker,
     )

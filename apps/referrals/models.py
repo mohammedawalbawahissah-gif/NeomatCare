@@ -93,6 +93,21 @@ class Referral(models.Model):
         help_text="The facility the engine ranked #1 for this case.",
     )
     engine_version  = models.CharField(max_length=20, blank=True)
+    # Which recommendation method actually produced engine_recommendation
+    # for this referral: "rule_based" (deterministic scoring, the default),
+    # "ai" (Claude-assisted re-ranking, opt-in), "ai_fallback_rule_based"
+    # (AI was requested but failed/was unavailable and rule-based was used
+    # instead), or "offline_rule_based" (the same deterministic scoring
+    # computed on-device because the server couldn't be reached — see
+    # utils/referralEngineOffline.js on web/mobile). Blank for older
+    # referrals created before this tracking existed.
+    ENGINE_MODE_CHOICES = [
+        ("rule_based", "Rule-Based"),
+        ("ai", "AI Analysis"),
+        ("ai_fallback_rule_based", "AI (fell back to rule-based)"),
+        ("offline_rule_based", "Rule-Based (computed offline)"),
+    ]
+    engine_mode = models.CharField(max_length=30, choices=ENGINE_MODE_CHOICES, blank=True)
     override_reason = models.TextField(
         blank=True,
         help_text="Required when the clinician selects a different facility than the engine suggested.",

@@ -64,11 +64,29 @@ export function buildReferralSmsBody({ patientName, age, dangerSigns, referringF
  * rest is free text and is best-effort keyword-matched for danger signs
  * server-side (both lay phrases AND the app's own DangerSign codes are
  * recognised, so passing codes straight through here, as below, works).
+ *
+ * Optional tags (order-independent, added by the app when it has the
+ * data — a human free-texting this from their own messages app would
+ * never type these, and doesn't need to; the format stays backward
+ * compatible with a bare "REFER 28 heavy bleeding"):
+ *   HID:<hospitalId>   — links to an EXISTING patient server-side instead
+ *                         of creating a duplicate (see (A)'s USSD lookup —
+ *                         this is the same fix, same reasoning, for SMS).
+ *   NAME:<patient name> — ignored server-side if HID matched a real
+ *                         patient (their name is already on file); used
+ *                         for a genuinely new patient otherwise.
+ *   REF:<referenceId>   — the local queued-mutation id, so staff can
+ *                         cross-reference this SMS-created referral back
+ *                         to what's sitting in the offline queue once it
+ *                         eventually syncs too.
  */
-export function buildAutoReferralSmsBody({ age, dangerSigns, patientName }) {
+export function buildAutoReferralSmsBody({ age, dangerSigns, patientName, hospitalId, referenceId }) {
   const signs = dangerSigns && dangerSigns.length ? dangerSigns.join(' ') : 'UNSPECIFIED';
-  const nameTag = patientName ? ` (${patientName})` : '';
-  return `REFER ${age || 0} ${signs}${nameTag}`;
+  const parts = [`REFER ${age || 0} ${signs}`];
+  if (hospitalId) parts.push(`HID:${hospitalId}`);
+  if (patientName) parts.push(`NAME:${patientName}`);
+  if (referenceId) parts.push(`REF:${String(referenceId).slice(0, 8).toUpperCase()}`);
+  return parts.join(' ');
 }
 
 /**
@@ -98,8 +116,8 @@ export async function openReferralSmsComposer(phone, body) {
  * facility's phone number; the backend's referral engine picks the
  * facility, same as it would for an in-app referral.
  */
-export async function triggerAutoReferralSms({ age, dangerSigns, patientName }) {
-  const body = buildAutoReferralSmsBody({ age, dangerSigns, patientName });
+export async function triggerAutoReferralSms({ age, dangerSigns, patientName, hospitalId, referenceId }) {
+  const body = buildAutoReferralSmsBody({ age, dangerSigns, patientName, hospitalId, referenceId });
   return openReferralSmsComposer(SMS_REFERRAL_NUMBER, body);
 }
 

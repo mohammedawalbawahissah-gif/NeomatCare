@@ -113,6 +113,7 @@ def handle_ussd_request(session_id: str, phone_number: str, text: str) -> str:
 
 def _handle(session_id: str, phone_number: str, text: str) -> str:
     from apps.accounts.models import User
+    from apps.cases.models import Patient
 
     worker = (
         User.objects.filter(
@@ -123,14 +124,29 @@ def _handle(session_id: str, phone_number: str, text: str) -> str:
         .select_related("facility")
         .first()
     )
-    if not worker:
-        return (
-            "END This number is not registered as a NeoMatCare health worker. "
-            "Please contact your facility admin, or use the app to register."
-        )
-    if not worker.facility_id:
-        return "END Your account has no facility on file. Please contact your facility admin."
 
+    if worker is not None:
+        if not worker.facility_id:
+            return "END Your account has no facility on file. Please contact your facility admin."
+        return _handle_staff(session_id, text, worker)
+
+    # Not a staff phone — check whether it's a patient's own number instead.
+    # This is what makes nutrition self-service possible: a woman never
+    # needs an app account, just a phone number a health worker recorded
+    # on her Patient record once (patient_phone_number, not the separate
+    # patient_user portal login).
+    patient = Patient.objects.filter(patient_phone_number=phone_number).select_related("household").first()
+    if patient is not None:
+        return _handle_patient(session_id, text, patient)
+
+    return (
+        "END This number is not registered with NeoMatCare.\n"
+        "Health workers: contact your facility admin.\n"
+        "Patients: contact your health worker to have your number added."
+    )
+
+
+def _handle_staff(session_id: str, text: str, worker) -> str:
     # ── Fresh session ────────────────────────────────────────────────────
     if text == "":
         save_session(session_id, {"step": "main_menu", "prev_text": ""})
@@ -138,7 +154,8 @@ def _handle(session_id: str, phone_number: str, text: str) -> str:
             "CON NeoMatCare\n"
             "1. Emergency Referral\n"
             "2. Check Patient Status\n"
-            "3. Log Follow-Up Note"
+            "3. Log Follow-Up Note\n"
+            "4. Household Follow-Up"
         )
 
     state = get_session(session_id)
@@ -181,6 +198,11 @@ def _handle(session_id: str, phone_number: str, text: str) -> str:
             state["prev_text"] = text
             save_session(session_id, state)
             return "CON Enter the patient's Hospital ID:"
+        if new_input == "4":
+            state["step"] = "household_menu"
+            state["prev_text"] = text
+            save_session(session_id, state)
+            return "CON Household Follow-Up\n1. By a member's Hospital ID\n2. Search by head-of-household name"
         clear_session(session_id)
         return "END Invalid selection. Please dial again."
 
@@ -329,6 +351,235 @@ def _handle(session_id: str, phone_number: str, text: str) -> str:
             f"The facility has been notified by SMS. Ref: {result['ref_id']}\n"
             f"Please complete full case details in the app when possible."
         )
+
+    # ── Household Follow-Up: entry menu (Hospital ID vs name search) ────
+    if step == "household_menu":
+        from apps.cases.household_service import find_household_by_member_hid, format_household_summary, get_household_members, format_member_list
+
+        if new_input == "1":
+            state["step"] = "household_hid"
+            state["prev_text"] = text
+            save_session(session_id, state)
+            return "CON Enter a member's Hospital ID:"
+        if new_input == "2":
+            state["step"] = "household_search"
+            state["prev_text"] = text
+            save_session(session_id, state)
+            return "CON Enter part of the head-of-household's name:"
+        clear_session(session_id)
+        return "END Invalid selection. Please dial again."
+
+    if step == "household_hid":
+        from apps.cases.household_service import find_household_by_member_hid
+        household = find_household_by_member_hid(new_input)
+        if not household:
+            clear_session(session_id)
+            return (
+                "END No household found for that Hospital ID — either the ID doesn't "
+                "match a patient, or that patient has no household on file. Please dial again."
+            )
+        return _enter_household(session_id, state, text, household)
+
+    if step == "household_search":
+        from apps.cases.household_service import search_households_by_household_name
+        results = list(search_households_by_household_name(new_input))
+        if not results:
+            clear_session(session_id)
+            return "END No household found matching that name. Please dial again."
+        if len(results) == 1:
+            return _enter_household(session_id, state, text, results[0])
+        if len(results) > 5:
+            clear_session(session_id)
+            return (
+                "END Too many matches for that name. Please dial again with a more "
+                "specific name, or use a member's Hospital ID instead."
+            )
+        state["household_choices"] = [str(h.id) for h in results[:5]]
+        state["step"] = "household_pick_result"
+        state["prev_text"] = text
+        save_session(session_id, state)
+        lines = [f"{i}. {h.head_name or 'Household ' + str(h.id)[:8]} ({h.town or 'no town'})" for i, h in enumerate(results[:5], start=1)]
+        return "CON Multiple matches — choose one:\n" + "\n".join(lines)
+
+    if step == "household_pick_result":
+        from apps.cases.models import Household
+        choices = state.get("household_choices", [])
+        if not new_input.isdigit() or not (1 <= int(new_input) <= len(choices)):
+            clear_session(session_id)
+            return "END Invalid selection. Please dial again."
+        household = Household.objects.get(id=choices[int(new_input) - 1])
+        return _enter_household(session_id, state, text, household)
+
+    if step == "household_pick_member":
+        members = state.get("household_member_ids", [])
+        if not new_input.isdigit() or not (1 <= int(new_input) <= len(members)):
+            clear_session(session_id)
+            return "END Invalid selection. Please dial again."
+        from apps.cases.models import Patient
+        patient = Patient.objects.get(id=members[int(new_input) - 1])
+        state["member_id"] = str(patient.id)
+        state["member_name"] = patient.patient_name or "this patient"
+        state["step"] = "household_member_action"
+        state["prev_text"] = text
+        save_session(session_id, state)
+        kind = "Child" if patient.patient_type == "child" else "Maternal"
+        return (
+            f"CON {patient.patient_name or 'Patient'} ({patient.age}, {kind})\n"
+            "1. Check status\n2. Log a note\n3. Nutrition tips\n4. Log a visit"
+        )
+
+    if step == "household_member_action":
+        from apps.cases.models import Patient
+        patient = Patient.objects.get(id=state["member_id"])
+
+        if new_input == "1":
+            clear_session(session_id)
+            from apps.cases.followup_service import format_patient_status
+            return f"END {format_patient_status(patient)}"
+
+        if new_input == "2":
+            state["step"] = "household_note_text"
+            state["prev_text"] = text
+            save_session(session_id, state)
+            return f"CON Enter your follow-up note for {state['member_name']}:"
+
+        if new_input == "3":
+            clear_session(session_id)
+            from apps.cases.followup_service import format_nutrition_tips
+            return f"END Nutrition tips for {state['member_name']}:\n{format_nutrition_tips(patient)}"
+
+        if new_input == "4":
+            state["step"] = "household_visit_type"
+            state["prev_text"] = text
+            save_session(session_id, state)
+            return f"CON Log Visit — {state['member_name']}\n1. Visit completed, no concerns\n2. Visit completed, has a concern"
+
+        clear_session(session_id)
+        return "END Invalid selection. Please dial again."
+
+    if step == "household_note_text":
+        clear_session(session_id)
+        if not new_input:
+            return "END Invalid note. Please dial again."
+        from apps.cases.models import Patient
+        from apps.cases.followup_service import log_note_for_patient
+        patient = Patient.objects.get(id=state["member_id"])
+        worker._followup_channel = "USSD"
+        log_note_for_patient(patient, worker, new_input)
+        return f"END Note saved for {state['member_name']}. Visible in the app now."
+
+    if step == "household_visit_type":
+        if new_input == "1":
+            clear_session(session_id)
+            from apps.cases.models import Patient
+            from apps.cases.household_service import log_visit
+            patient = Patient.objects.get(id=state["member_id"])
+            log_visit(patient, worker)
+            return f"END Visit logged for {state['member_name']} — no concerns. Visible in the app now."
+        if new_input == "2":
+            state["step"] = "household_visit_concern"
+            state["prev_text"] = text
+            save_session(session_id, state)
+            return "CON Describe the concern:"
+        clear_session(session_id)
+        return "END Invalid selection. Please dial again."
+
+    if step == "household_visit_concern":
+        clear_session(session_id)
+        if not new_input:
+            return "END Invalid entry. Please dial again."
+        from apps.cases.models import Patient
+        from apps.cases.household_service import log_visit
+        patient = Patient.objects.get(id=state["member_id"])
+        log_visit(patient, worker, concern_text=new_input)
+        return f"END Visit logged for {state['member_name']} with a concern noted. Visible in the app now."
+
+    clear_session(session_id)
+    return "END Session expired. Please dial again."
+
+
+def _enter_household(session_id: str, state: dict, text: str, household) -> str:
+    """Shared tail for all three ways into a household (Hospital ID,
+    single name-search match, or picking from multiple matches) — lists
+    its members and moves the session to household_pick_member."""
+    from apps.cases.household_service import format_household_summary, get_household_members, format_member_list
+
+    members = get_household_members(household)
+    if not members:
+        clear_session(session_id)
+        return "END This household has no members on file yet. Please use the app."
+
+    state["household_member_ids"] = [str(m.id) for m in members]
+    state["step"] = "household_pick_member"
+    state["prev_text"] = text
+    save_session(session_id, state)
+
+    more_note = "\n(+more — use the app to see all)" if household.members.count() > len(members) else ""
+    return f"CON {format_household_summary(household)}\n{format_member_list(members)}{more_note}"
+
+
+def _handle_patient(session_id: str, text: str, patient) -> str:
+    """
+    Nutrition self-service — reached when the caller's phone number
+    matches a Patient.patient_phone_number rather than a staff account
+    (see _handle above). Deliberately the ONLY thing offered here: this
+    is not a general patient portal over USSD, just the one piece of the
+    app (nutrition guidance) that's high-value enough, for an audience
+    overlapping heavily enough with "no smartphone, no data", to justify
+    building for a caller who isn't staff at all.
+    """
+    from apps.cases.followup_service import format_nutrition_tips
+
+    children = list(patient.household.members.filter(patient_type="child")) if patient.household_id else []
+
+    if text == "":
+        menu = "CON NeoMatCare Nutrition\n1. My nutrition guidance"
+        if children:
+            menu += "\n2. My child's nutrition"
+        save_session(session_id, {"step": "patient_menu", "prev_text": ""})
+        return menu
+
+    state = get_session(session_id)
+    if state is None:
+        return "END Session expired. Please dial again."
+
+    prev_text = state.get("prev_text", "")
+    if not text.startswith(prev_text):
+        clear_session(session_id)
+        return "END Session error. Please dial again."
+    new_input = text[len(prev_text):]
+    if new_input.startswith("*"):
+        new_input = new_input[1:]
+    new_input = new_input.strip()
+
+    step = state["step"]
+
+    if step == "patient_menu":
+        if new_input == "1":
+            clear_session(session_id)
+            return f"END Your nutrition tips:\n{format_nutrition_tips(patient)}"
+        if new_input == "2" and children:
+            if len(children) == 1:
+                clear_session(session_id)
+                child = children[0]
+                return f"END Nutrition tips for {child.patient_name or 'your child'}:\n{format_nutrition_tips(child)}"
+            state["child_ids"] = [str(c.id) for c in children]
+            state["step"] = "patient_pick_child"
+            state["prev_text"] = text
+            save_session(session_id, state)
+            lines = [f"{i}. {c.patient_name or 'Child'} (age {c.age})" for i, c in enumerate(children, start=1)]
+            return "CON Which child?\n" + "\n".join(lines)
+        clear_session(session_id)
+        return "END Invalid selection. Please dial again."
+
+    if step == "patient_pick_child":
+        clear_session(session_id)
+        ids = state.get("child_ids", [])
+        if not new_input.isdigit() or not (1 <= int(new_input) <= len(ids)):
+            return "END Invalid selection. Please dial again."
+        from apps.cases.models import Patient
+        child = Patient.objects.get(id=ids[int(new_input) - 1])
+        return f"END Nutrition tips for {child.patient_name or 'your child'}:\n{format_nutrition_tips(child)}"
 
     clear_session(session_id)
     return "END Session expired. Please dial again."

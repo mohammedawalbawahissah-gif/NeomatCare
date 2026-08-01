@@ -15,12 +15,22 @@ the carrier's queue and gets delivered whenever the phone next has any
 signal at all, so this is also the path least likely to be dropped by a
 brief signal window.
 
-Also supports two routine, non-emergency commands (item (C) of the
-offline-first plan — see apps/cases/followup_service.py), both replying
-directly to the sender by SMS since there's no receiving facility to
-notify for either:
+Also supports several routine, non-emergency commands (items (C) and the
+household/nutrition additions — see apps/cases/followup_service.py and
+apps/cases/household_service.py), all replying directly to the sender by
+SMS since there's no receiving facility to notify for any of them:
     STATUS <hospital id>              — a short status summary
     NOTE <hospital id> <note text>    — appends a follow-up note
+    HOUSEHOLD <a member's hospital id> — that household's summary + members
+    VISIT <hospital id> OK             — logs a no-concerns visit
+    VISIT <hospital id> CONCERN <text> — logs a visit with a concern noted
+    NUTRITION <hospital id>            — staff: that patient's nutrition tips
+
+NUTRITION also works from a PATIENT's own phone number (matched against
+Patient.patient_phone_number, not a staff account — see _handle_patient_sms):
+    NUTRITION                          — her own nutrition guidance
+    NUTRITION CHILD [name]             — a linked child's guidance (name
+                                          only needed if more than one)
 
 Message format (case-insensitive, keyword order doesn't matter beyond
 "REFER <age> <rest>"):
@@ -84,6 +94,24 @@ REFER_PATTERN = re.compile(r"^\s*REFER\s+(\d{1,3})\s+(.+)$", re.IGNORECASE | re.
 STATUS_PATTERN = re.compile(r"^\s*STATUS\s+(\S+)\s*$", re.IGNORECASE)
 NOTE_PATTERN   = re.compile(r"^\s*NOTE\s+(\S+)\s+(.+)$", re.IGNORECASE | re.DOTALL)
 
+# Household follow-up (staff only) — mirrors ussd_service.py's Household
+# Follow-Up menu, Hospital-ID path only (no name search over SMS — a
+# single command with no back-and-forth has nowhere to show a numbered
+# disambiguation list, so this stays to the unambiguous entry point).
+HOUSEHOLD_PATTERN     = re.compile(r"^\s*HOUSEHOLD\s+(\S+)\s*$", re.IGNORECASE)
+VISIT_OK_PATTERN      = re.compile(r"^\s*VISIT\s+(\S+)\s+OK\s*$", re.IGNORECASE)
+VISIT_CONCERN_PATTERN = re.compile(r"^\s*VISIT\s+(\S+)\s+CONCERN\s+(.+)$", re.IGNORECASE | re.DOTALL)
+
+# NUTRITION works two ways on the same command word:
+#   Staff, with a Hospital ID: "NUTRITION H12345"  -> looks up that patient.
+#   A patient's own phone, no argument: "NUTRITION" -> her own guidance;
+#     "NUTRITION CHILD" or "NUTRITION CHILD <name>" -> a child's guidance.
+# Dispatch on argument shape happens in _handle, since which of these
+# applies depends on WHO is texting, not just the text itself.
+NUTRITION_STAFF_PATTERN   = re.compile(r"^\s*NUTRITION\s+(\S+)\s*$", re.IGNORECASE)
+NUTRITION_SELF_PATTERN    = re.compile(r"^\s*NUTRITION\s*$", re.IGNORECASE)
+NUTRITION_CHILD_PATTERN   = re.compile(r"^\s*NUTRITION\s+CHILD\s*(.*)$", re.IGNORECASE | re.DOTALL)
+
 # App-composed optional tags, order-independent within the free-text
 # portion. NAME must stop at the next recognised tag (or end of string)
 # since a name can contain spaces — HID and REF can't (Hospital IDs and
@@ -144,6 +172,7 @@ def handle_inbound_sms(sender_phone: str, text: str, message_id: str = "") -> di
 
 def _handle(sender_phone: str, text: str, message_id: str) -> dict:
     from apps.accounts.models import User
+    from apps.cases.models import Patient
 
     worker = (
         User.objects.filter(
@@ -154,9 +183,18 @@ def _handle(sender_phone: str, text: str, message_id: str) -> dict:
         .select_related("facility")
         .first()
     )
-    if not worker:
-        logger.warning("SMS referral attempt from unregistered number %s", sender_phone)
-        return {"status": "unregistered", "detail": "Sender phone number is not a registered health worker."}
+
+    if worker is None:
+        # Not staff — check whether this is a patient's own number instead.
+        # Only NUTRITION is offered to a patient sender; every other
+        # command below stays staff-only. See ussd_service.py's identical
+        # identity branch for the same reasoning.
+        patient = Patient.objects.filter(patient_phone_number=sender_phone).select_related("household").first()
+        if patient is not None:
+            return _handle_patient_sms(sender_phone, text, patient)
+
+        logger.warning("SMS attempt from unregistered number %s", sender_phone)
+        return {"status": "unregistered", "detail": "Sender phone number is not registered with NeoMatCare."}
 
     if not worker.facility_id:
         return {"status": "no_facility", "detail": "Sender has no facility on file."}
@@ -190,6 +228,54 @@ def _handle(sender_phone: str, text: str, message_id: str) -> dict:
         send_sms(sender_phone, f"NeoMatCare: Note saved for {patient.patient_name or 'patient'}.")
         return {"status": "note_saved", "detail": f"Follow-up note saved for {patient.patient_name}."}
 
+    household_match = HOUSEHOLD_PATTERN.match(stripped)
+    if household_match:
+        from apps.cases.household_service import find_household_by_member_hid, format_household_summary, get_household_members, format_member_list
+        from sms_service import send_sms
+
+        hospital_id = household_match.group(1)
+        household = find_household_by_member_hid(hospital_id)
+        if household is None:
+            send_sms(sender_phone, f"NeoMatCare: No household found for Hospital ID {hospital_id}.")
+            return {"status": "not_found", "detail": "No household matched that Hospital ID."}
+        members = get_household_members(household)
+        more = "\n(+more — use the app to see all)" if household.members.count() > len(members) else ""
+        send_sms(sender_phone, f"NeoMatCare Household:\n{format_household_summary(household)}\n{format_member_list(members)}{more}")
+        return {"status": "household_sent", "detail": "Household summary sent by SMS."}
+
+    visit_ok_match = VISIT_OK_PATTERN.match(stripped)
+    visit_concern_match = None if visit_ok_match else VISIT_CONCERN_PATTERN.match(stripped)
+    if visit_ok_match or visit_concern_match:
+        from apps.cases.models import Patient as PatientModel
+        from apps.cases.household_service import log_visit
+        from sms_service import send_sms
+
+        hospital_id = (visit_ok_match or visit_concern_match).group(1)
+        concern = visit_concern_match.group(2).strip() if visit_concern_match else None
+        patient = PatientModel.objects.filter(hospital_id__iexact=hospital_id).first()
+        if patient is None:
+            send_sms(sender_phone, f"NeoMatCare: No patient found with Hospital ID {hospital_id}. Visit not saved.")
+            return {"status": "not_found", "detail": "No patient matched that Hospital ID."}
+        worker._followup_channel = "SMS"
+        log_visit(patient, worker, concern_text=concern)
+        tag = "with a concern noted" if concern else "no concerns"
+        send_sms(sender_phone, f"NeoMatCare: Visit logged for {patient.patient_name or 'patient'} — {tag}.")
+        return {"status": "visit_logged", "detail": f"Visit logged for {patient.patient_name}."}
+
+    nutrition_match = NUTRITION_STAFF_PATTERN.match(stripped)
+    if nutrition_match:
+        from apps.cases.models import Patient as PatientModel
+        from apps.cases.followup_service import format_nutrition_tips
+        from sms_service import send_sms
+
+        hospital_id = nutrition_match.group(1)
+        patient = PatientModel.objects.filter(hospital_id__iexact=hospital_id).first()
+        if patient is None:
+            send_sms(sender_phone, f"NeoMatCare: No patient found with Hospital ID {hospital_id}.")
+            return {"status": "not_found", "detail": "No patient matched that Hospital ID."}
+        send_sms(sender_phone, f"NeoMatCare Nutrition Tips:\n{format_nutrition_tips(patient)}")
+        return {"status": "nutrition_sent", "detail": "Nutrition tips sent by SMS."}
+
     match = REFER_PATTERN.match(text or "")
     if not match:
         return {
@@ -221,6 +307,51 @@ def _handle(sender_phone: str, text: str, message_id: str) -> dict:
         "referral_id": result["ref_id"],
         "facility_name": result["facility_name"],
     }
+
+
+def _handle_patient_sms(sender_phone: str, text: str, patient) -> dict:
+    """
+    Nutrition self-service by SMS — the same audience and same single
+    purpose as ussd_service.py's _handle_patient, just without a
+    back-and-forth session (one SMS in, one reply out). Only NUTRITION,
+    NUTRITION CHILD, and NUTRITION CHILD <name> are recognised here;
+    anything else from a patient-only number is told what commands exist
+    rather than treated as an error.
+    """
+    from apps.cases.followup_service import format_nutrition_tips
+    from sms_service import send_sms
+
+    stripped = (text or "").strip()
+
+    child_match = NUTRITION_CHILD_PATTERN.match(stripped)
+    if child_match:
+        children = list(patient.household.members.filter(patient_type="child")) if patient.household_id else []
+        if not children:
+            send_sms(sender_phone, "NeoMatCare: No child is on file for your household.")
+            return {"status": "not_found", "detail": "No child linked to this patient's household."}
+
+        name_arg = child_match.group(1).strip()
+        if name_arg:
+            child = next((c for c in children if name_arg.lower() in (c.patient_name or "").lower()), None)
+            if not child:
+                send_sms(sender_phone, f"NeoMatCare: No child named '{name_arg}' found. Reply NUTRITION CHILD to see options.")
+                return {"status": "not_found", "detail": "No child matched that name."}
+        elif len(children) == 1:
+            child = children[0]
+        else:
+            names = ", ".join(c.patient_name or "Child" for c in children)
+            send_sms(sender_phone, f"NeoMatCare: You have more than one child on file ({names}). Reply NUTRITION CHILD <name>.")
+            return {"status": "ambiguous", "detail": "Multiple children — name required."}
+
+        send_sms(sender_phone, f"NeoMatCare Nutrition Tips for {child.patient_name or 'your child'}:\n{format_nutrition_tips(child)}")
+        return {"status": "nutrition_sent", "detail": f"Child nutrition tips sent for {child.patient_name}."}
+
+    if NUTRITION_SELF_PATTERN.match(stripped):
+        send_sms(sender_phone, f"NeoMatCare Nutrition Tips:\n{format_nutrition_tips(patient)}")
+        return {"status": "nutrition_sent", "detail": "Nutrition tips sent by SMS."}
+
+    send_sms(sender_phone, "NeoMatCare: Reply NUTRITION for your own tips, or NUTRITION CHILD for your child's.")
+    return {"status": "help_sent", "detail": "Sent available commands to a patient-only number."}
 
 
 def _create_sms_referral(

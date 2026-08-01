@@ -41,7 +41,7 @@ building that ahead of evidence it's needed.
 from django.utils import timezone
 
 
-def _format_status(patient) -> str:
+def format_patient_status(patient) -> str:
     lines = [f"{patient.patient_name or 'Unnamed'}, Age {patient.age}"]
     lines.append(f"Risk: {patient.get_risk_level_display().upper()}")
 
@@ -77,7 +77,20 @@ def check_patient_status(hospital_id: str) -> str | None:
     )
     if not patient:
         return None
-    return _format_status(patient)
+    return format_patient_status(patient)
+
+
+def log_note_for_patient(patient, worker, text: str):
+    """Core of log_followup_note() below, taking an already-resolved
+    Patient — used directly by the household follow-up flow, which has
+    already looked the patient up as part of listing household members
+    and shouldn't need a second Hospital ID round-trip."""
+    timestamp = timezone.now().strftime("%Y-%m-%d %H:%M")
+    channel = getattr(worker, "_followup_channel", "field")
+    entry = f"[{timestamp} {channel} by {worker.name}] {text.strip()}"
+    patient.notes = f"{patient.notes}\n{entry}".strip() if patient.notes else entry
+    patient.save(update_fields=["notes"])
+    return patient
 
 
 def log_followup_note(hospital_id: str, worker, text: str):
@@ -86,10 +99,51 @@ def log_followup_note(hospital_id: str, worker, text: str):
     patient = Patient.objects.filter(hospital_id__iexact=hospital_id).first()
     if not patient:
         return None
+    return log_note_for_patient(patient, worker, text)
 
-    timestamp = timezone.now().strftime("%Y-%m-%d %H:%M")
-    channel = getattr(worker, "_followup_channel", "field")
-    entry = f"[{timestamp} {channel} by {worker.name}] {text.strip()}"
-    patient.notes = f"{patient.notes}\n{entry}".strip() if patient.notes else entry
-    patient.save(update_fields=["notes"])
-    return patient
+
+def format_nutrition_tips(patient) -> str:
+    """
+    Shared by: USSD/SMS worker lookup (household member action menu, and
+    the NUTRITION <hospital id> SMS command) AND patient self-service
+    (identified by her own phone number — see ussd_service.py's identity
+    branch). Reuses apps.wellness.services' existing snapshot functions —
+    the exact same content the app's own Nutrition tab shows — rather
+    than duplicating any nutrition logic here.
+
+    Deliberately skips the AI-enhanced local-food suggestion
+    (apps.wellness.views._with_ai_local_food) that the app's HTTP
+    endpoints apply: that call can take a few seconds, which the app
+    tolerates with a loading spinner but a live USSD session cannot —
+    Africa's Talking expects a response within roughly 10 seconds, and
+    ussd_service.py already runs tight on that budget for the emergency
+    flow without adding a network call to Claude on top. The plain
+    curated local_food_tips list (already computed, no network call) is
+    used directly instead — same underlying data, just without the
+    optional personalised phrasing layer.
+    """
+    from apps.wellness.services import (
+        get_pregnancy_snapshot, get_adult_nutrition_snapshot, get_child_nutrition_snapshot,
+    )
+
+    if patient.patient_type == "child":
+        snap = get_child_nutrition_snapshot(patient)
+        core_tips = snap["feeding_tips"] if snap else []
+    elif patient.wellness_type == "wellness":
+        snap = get_adult_nutrition_snapshot(patient)
+        core_tips = snap["feeding_tips"] if snap else []
+    else:
+        snap = get_pregnancy_snapshot(patient)
+        core_tips = snap["trimester_content"]["nutrition"] if snap else []
+
+    if not snap:
+        return "No nutrition guidance on file yet for this record."
+
+    lines = list(core_tips[:2])
+    local_food = snap.get("local_food_tips") or []
+    if local_food:
+        lines.append(local_food[0])
+
+    if not lines:
+        return "No specific tips available right now."
+    return "\n".join(f"- {l}" for l in lines)

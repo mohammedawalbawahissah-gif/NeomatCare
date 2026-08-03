@@ -1,5 +1,5 @@
 import uuid
-import random
+import secrets
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from django.utils import timezone
@@ -115,7 +115,7 @@ class OTPVerification(models.Model):
         """Create a fresh 6-digit OTP valid for 10 minutes."""
         # Invalidate all prior unused codes for this user
         cls.objects.filter(user=user, is_used=False).update(is_used=True)
-        code = str(random.randint(100000, 999999))
+        code = str(secrets.randbelow(900000) + 100000)
         return cls.objects.create(
             user=user,
             code=code,

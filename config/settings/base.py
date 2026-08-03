@@ -178,11 +178,23 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ],
+    # Global baseline throttle — every endpoint gets this floor even where
+    # nothing more specific is set. AnonRateThrottle/UserRateThrottle
+    # consume the "anon"/"user" rates below by DRF's own naming
+    # convention. This used to be dead config (rates defined, no
+    # throttle classes ever activated) — real protection on the specific
+    # sensitive endpoints (login, OTP, referral AI mode) comes from
+    # separate, working mechanisms (django-ratelimit decorators in
+    # apps/accounts/views.py; the in-method check in
+    # apps/referrals/views.py's ReferralSuggestView) — this is a second,
+    # broader layer covering everything else that had no protection at all.
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
     "DEFAULT_THROTTLE_RATES": {
         "anon": "20/min",
         "user": "100/min",
-        "auth": "5/min",
-        "suggest": "30/min",
     },
 }
 

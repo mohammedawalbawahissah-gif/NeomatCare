@@ -3,6 +3,7 @@ apps/referrals/views.py
 """
 import logging
 
+from django_ratelimit.core import is_ratelimited
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -120,6 +121,19 @@ class ReferralSuggestView(APIView):
 
         if mode != "ai":
             return Response(rule_based_payload)
+
+        # Only the AI branch is rate-limited, not the whole view — the
+        # rule-based path above is the free, zero-extra-tap default that
+        # loads automatically every time a health worker opens the
+        # referral step, and a busy facility processing several cases in
+        # quick succession shouldn't be throttled for that. AI Analysis is
+        # opt-in and calls Claude, so it gets the same per-user limit every
+        # other AI-calling view in this codebase uses.
+        if is_ratelimited(request, group="referral-suggest-ai", key="user", rate="20/min", method="POST", increment=True):
+            fallback = dict(rule_based_payload)
+            fallback["engine_mode"] = "ai_fallback_rule_based"
+            fallback["fallback_reason"] = "AI Analysis rate limit reached — showing Rule-Based instead. Try again in a minute."
+            return Response(fallback)
 
         try:
             ai_payload = self._run_ai_mode(case, case_snap, facility_snaps, result)

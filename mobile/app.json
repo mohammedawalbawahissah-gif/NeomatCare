@@ -1,0 +1,70 @@
+{
+  "expo": {
+    "name": "NeoMatCare",
+    "slug": "neomatcare-mobile",
+    "scheme": "neomatcare",
+    "version": "1.0.0",
+    "sdkVersion": "54.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0d9488"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.neomatcare.mobile",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "NeoMatCare uses the microphone for voice dictation into case and patient forms.",
+        "NSSpeechRecognitionUsageDescription": "NeoMatCare uses speech recognition for English voice dictation."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0d9488"
+      },
+      "package": "com.neomatcare.mobile",
+      "permissions": [
+        "RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-notifications",
+      "expo-font",
+      [
+        "@react-native-voice/voice",
+        {
+          "microphonePermission": "NeoMatCare uses the microphone for voice dictation into case and patient forms.",
+          "speechRecognitionPermission": "NeoMatCare uses speech recognition for English voice dictation."
+        }
+      ],
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": "NeoMatCare uses the camera for video teleconsultations with specialists.",
+          "microphonePermission": "NeoMatCare uses the microphone for teleconsultation calls."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "62925249-8af9-46b9-be25-27dcf693ee29"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/62925249-8af9-46b9-be25-27dcf693ee29"
+    }
+  }
+}

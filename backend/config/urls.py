@@ -1,0 +1,41 @@
+from django.contrib import admin
+from django.urls import path, include
+from django.http import JsonResponse
+from django.db import connection
+
+def health_check(request):
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        db_ok = True
+    except Exception:
+        db_ok = False
+
+    return JsonResponse(
+        {"status": "ok" if db_ok else "degraded", "database": db_ok},
+        status=200 if db_ok else 503,
+    )
+
+urlpatterns = [
+    path("admin/",             admin.site.urls),
+    path("api/health/",        include("apps.referrals.health_urls")),
+    path("api/auth/",          include("apps.accounts.urls")),
+    path("api/facilities/",    include("apps.facilities.urls")),
+    path("api/cases/",         include("apps.cases.urls")),
+    path("api/patients/",      include("apps.cases.urls")),
+    path("api/referrals/",     include("apps.referrals.urls")),
+    path("api/transport/",     include("apps.transport.urls")),
+    path("api/consultations/", include("apps.consultations.urls")),
+    path("api/ai/",            include("apps.ai.urls")),
+    path("api/notifications/", include("apps.notifications.urls")),
+    path("api/wellness/",      include("apps.wellness.urls")),
+    path("api/voice/",         include("apps.voice.urls")),
+    # Africa's Talking USSD callback — see ussd_service.py for why this is
+    # a plain Django view (not DRF) with no auth: AT calls it directly as
+    # a webhook, and the health-worker phone-number lookup happens inside
+    # the handler itself.
+    path("ussd/",              include("apps.referrals.ussd_urls")),
+    # Africa's Talking inbound-SMS callback — see sms_inbound_service.py.
+    # Same no-DRF/no-auth shape as the USSD callback above, same reason.
+    path("sms/inbound/",       include("apps.referrals.sms_inbound_urls")),
+]

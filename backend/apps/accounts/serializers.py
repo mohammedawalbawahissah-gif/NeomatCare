@@ -1,0 +1,250 @@
+from django.contrib.auth.password_validation import validate_password
+from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from .models import User, OTPVerification, PatientServiceReview
+
+# Roles that must be linked to a facility
+FACILITY_REQUIRED_ROLES = {'health_worker', 'facility_admin'}
+
+# Roles that are exempt from OTP verification (superadmin is created via manage.py only)
+OTP_EXEMPT_ROLES = {'superadmin'}
+
+# Roles the public /register/ endpoint is allowed to create.
+# superadmin is intentionally excluded — it must only ever be created via
+# `manage.py createsuperuser` (or by an existing superadmin through the
+# admin user-management endpoints). Without this whitelist, anyone could
+# POST {"role": "superadmin"} to this open endpoint and — since superadmin
+# is also OTP-exempt — receive an active, verified superadmin account
+# instantly with no verification step at all.
+SELF_REGISTERABLE_ROLES = {'health_worker', 'facility_admin', 'specialist', 'driver', 'patient'}
+
+# Self-registered staff roles must be approved by a Facility Admin or
+# SuperAdmin before they can log in — otherwise anyone hitting the public
+# /register/ endpoint could grant themselves facility_admin access to real
+# patient data the moment they verify an OTP. Wellness Members (patients)
+# are excluded here on purpose: they don't manage clinical data, so there's
+# nothing for an admin to gate.
+STAFF_ROLES_REQUIRING_APPROVAL = {'health_worker', 'facility_admin', 'specialist', 'driver'}
+
+
+class RegisterSerializer(serializers.ModelSerializer):
+    password       = serializers.CharField(write_only=True, validators=[validate_password])
+    password2      = serializers.CharField(write_only=True, label='Confirm password')
+    facility       = serializers.UUIDField(required=False, allow_null=True)
+    phone_number   = serializers.CharField(required=False, allow_blank=True, max_length=20)
+    license_number = serializers.CharField(required=False, allow_blank=True, max_length=100)
+    # 'sms' or 'email' — required for all non-superadmin roles
+    otp_channel    = serializers.ChoiceField(
+        choices=['sms', 'email'], required=False, default='sms'
+    )
+    # Only used for role='patient' — which Wellness Companion experience the
+    # user gets (see User.WellnessType). Ignored for every other role.
+    wellness_type  = serializers.ChoiceField(
+        choices=['maternal', 'wellness'], required=False, default='maternal'
+    )
+
+    class Meta:
+        model  = User
+        fields = [
+            'name', 'email', 'password', 'password2', 'role',
+            'facility', 'phone_number', 'license_number', 'otp_channel',
+            'wellness_type',
+        ]
+        extra_kwargs = {'role': {'required': False}}
+
+    def validate_role(self, value):
+        if value and value not in SELF_REGISTERABLE_ROLES:
+            raise serializers.ValidationError(
+                'This role cannot be self-registered. Please contact an administrator.'
+            )
+        return value
+
+    def validate(self, attrs):
+        if attrs['password'] != attrs.pop('password2'):
+            raise serializers.ValidationError({'password': 'Passwords do not match.'})
+
+        role    = attrs.get('role', 'health_worker')
+        channel = attrs.get('otp_channel', 'sms')
+        facility = attrs.get('facility')
+
+        # wellness_type only makes sense for patients — drop it silently for
+        # every other role rather than erroring, since the frontend forms
+        # for staff roles won't send it at all.
+        if role != 'patient':
+            attrs.pop('wellness_type', None)
+
+        if role in FACILITY_REQUIRED_ROLES and not facility:
+            raise serializers.ValidationError({
+                'facility': (
+                    f'A facility is required for the {role.replace("_", " ")} role. '
+                    f'Please select your facility.'
+                )
+            })
+
+        # SMS channel requires phone number
+        if role not in OTP_EXEMPT_ROLES and channel == 'sms':
+            phone = attrs.get('phone_number', '').strip()
+            if not phone:
+                raise serializers.ValidationError({
+                    'phone_number': 'A phone number is required when verifying via SMS.'
+                })
+
+        return attrs
+
+    def create(self, validated_data):
+        facility_id    = validated_data.pop('facility', None)
+        phone_number   = validated_data.pop('phone_number', '')
+        license_number = validated_data.pop('license_number', '')
+        otp_channel    = validated_data.pop('otp_channel', 'sms')
+        role           = validated_data.get('role', 'health_worker')
+
+        # Non-superadmin accounts start inactive until OTP verified
+        if role not in OTP_EXEMPT_ROLES:
+            validated_data['is_active'] = False
+
+        user = User.objects.create_user(**validated_data)
+
+        # Wellness Members (patients) have nothing for an admin to gate —
+        # auto-approve. Staff roles stay is_approved=False until reviewed
+        # (see STAFF_ROLES_REQUIRING_APPROVAL and VerifyOTPView).
+        if role == 'patient':
+            user.is_approved = True
+            user.save(update_fields=['is_approved'])
+
+        # Persist phone number
+        if phone_number:
+            user.phone_number = phone_number
+            user.save(update_fields=['phone_number'])
+
+        if facility_id:
+            from apps.facilities.models import HealthFacility
+            try:
+                user.facility = HealthFacility.objects.get(id=facility_id)
+                user.save(update_fields=['facility'])
+            except HealthFacility.DoesNotExist:
+                pass
+
+        # Auto-create Driver record
+        if user.role == 'driver':
+            from apps.transport.models import Driver
+            Driver.objects.get_or_create(
+                name=user.name,
+                defaults={
+                    'phone_number':   phone_number,
+                    'license_number': license_number,
+                    'is_active':      True,
+                }
+            )
+
+        return user
+
+
+class UserSerializer(serializers.ModelSerializer):
+    facility_name = serializers.CharField(source='facility.name', read_only=True, allow_null=True)
+    facility_id   = serializers.UUIDField(source='facility.id',   read_only=True, allow_null=True)
+
+    class Meta:
+        model  = User
+        fields = [
+            'id', 'name', 'email', 'phone_number', 'role', 'wellness_type',
+            'facility_id', 'facility_name', 'is_active', 'is_verified',
+            'is_approved', 'created_at',
+        ]
+        read_only_fields = fields
+
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        token['name']        = user.name
+        token['role']        = user.role
+        token['facility_id'] = str(user.facility_id) if user.facility_id else None
+        # Only meaningful when role == 'patient', but harmless to include
+        # for every role — lets the frontend gate the Wellness Companion
+        # nav right on login instead of waiting for a /me/ round trip.
+        token['wellness_type'] = user.wellness_type
+        return token
+
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        # is_active already passed (Django's authenticate() checks it), but
+        # for self-registered staff that only means "OTP verified" — it does
+        # NOT mean a Facility Admin or SuperAdmin has approved them yet.
+        # Wellness Members (patients) and admin-created staff are always
+        # is_approved=True (see serializers.create() above), so this only
+        # ever blocks self-registered staff still awaiting review.
+        if self.user.role in STAFF_ROLES_REQUIRING_APPROVAL and not self.user.is_approved:
+            raise serializers.ValidationError(
+                {'detail': 'Your account is awaiting approval from a Facility Admin or SuperAdmin. '
+                           'You will be able to log in once approved.'}
+            )
+        data['user'] = UserSerializer(self.user).data
+        return data
+
+
+class UserCreateSerializer(serializers.ModelSerializer):
+    """Used by admins (superadmin / facility_admin) to create new users directly — no OTP."""
+    password  = serializers.CharField(write_only=True, validators=[validate_password])
+    password2 = serializers.CharField(write_only=True, label='Confirm password')
+    facility  = serializers.UUIDField(required=False, allow_null=True)
+
+    class Meta:
+        model  = User
+        fields = ['name', 'email', 'password', 'password2', 'role', 'facility', 'is_active']
+        extra_kwargs = {'role': {'required': False}, 'is_active': {'required': False}}
+
+    def validate(self, attrs):
+        if attrs['password'] != attrs.pop('password2'):
+            raise serializers.ValidationError({'password': 'Passwords do not match.'})
+        return attrs
+
+    def create(self, validated_data):
+        facility_id    = validated_data.pop('facility', None)
+        phone_number   = validated_data.pop('phone_number', '')
+        license_number = validated_data.pop('license_number', '')
+
+        # Admin-created accounts are active and verified immediately — and
+        # auto-approved, since a trusted admin created them directly rather
+        # than through public self-registration (no OTP, no gate needed).
+        validated_data.setdefault('is_active', True)
+        user = User.objects.create_user(**validated_data)
+        user.is_verified = True
+        user.is_approved = True
+        user.save(update_fields=['is_verified', 'is_approved'])
+
+        if facility_id:
+            from apps.facilities.models import HealthFacility
+            try:
+                user.facility = HealthFacility.objects.get(id=facility_id)
+                user.save(update_fields=['facility'])
+            except HealthFacility.DoesNotExist:
+                pass
+
+        if user.role == 'driver':
+            from apps.transport.models import Driver
+            Driver.objects.get_or_create(
+                name=user.name,
+                defaults={
+                    'phone_number':   phone_number,
+                    'license_number': license_number,
+                    'is_active':      True,
+                }
+            )
+
+        return user
+
+
+class PatientServiceReviewSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = PatientServiceReview
+        fields = [
+            'id', 'visit_type', 'period', 'facility_name',
+            'rating', 'comments', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']
+
+    def validate_rating(self, value):
+        if not 1 <= value <= 5:
+            raise serializers.ValidationError('Rating must be between 1 and 5.')
+        return value
